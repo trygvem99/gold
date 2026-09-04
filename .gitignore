@@ -1,0 +1,4 @@
+node_modules/
+*.log
+gold-backup-*.json
+.DS_Store

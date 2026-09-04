@@ -1,0 +1,17 @@
+{
+  "habits": [
+    { "name": "Meditate", "emoji": "🧘", "target": 2 },
+    { "name": "Train", "emoji": "🏋️", "target": 1 },
+    { "name": "Read 30 min", "emoji": "📖", "target": 1 },
+    { "name": "No sugar", "emoji": "🚫", "target": 1 },
+    { "name": "Walk outside", "emoji": "🚶", "target": 1 },
+    { "name": "Lights out by 23:00", "emoji": "🌙", "target": 1 }
+  ],
+  "prizes": [
+    { "name": "Night out", "emoji": "🍸", "color": "#7C4DFF", "weight": 3 },
+    { "name": "Dinner out", "emoji": "🍽️", "color": "#E0447C", "weight": 5 },
+    { "name": "Cheat meal", "emoji": "🍔", "color": "#E8B94A", "weight": 12 },
+    { "name": "Bakery run", "emoji": "🥐", "color": "#2FA98C", "weight": 14 },
+    { "name": "Cinema", "emoji": "🎬", "color": "#3D7BE0", "weight": 8 }
+  ]
+}

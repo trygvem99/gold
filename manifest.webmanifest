@@ -1,0 +1,14 @@
+{
+  "name": "Gold",
+  "short_name": "Gold",
+  "description": "Daily habits, earned tickets, a wheel worth spinning",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B0B0F",
+  "theme_color": "#0B0B0F",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
