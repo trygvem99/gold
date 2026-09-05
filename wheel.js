@@ -5,18 +5,26 @@
 
 const Wheel = (() => {
   const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const WIND_MS = REDUCED ? 0 : 380;    // pull back against the brake
-  const MAIN_MS = REDUCED ? 700 : 6100; // release, then friction
-  const SETTLE_MS = REDUCED ? 0 : 820;  // the flapper pushing it back into place
-  const SPIN_MS = WIND_MS + MAIN_MS + SETTLE_MS;
-  const WIND_DEG = 13;
-  const DECAY = 4.1; // friction constant: higher = longer crawl at the end
+  // Five acts. The point of the last three is that the wheel comes to a near
+  // halt one notch short of the prize, hangs there, and then tips over the
+  // divider — the reveal happens in the creep, not in the spin.
+  const WIND_MS = REDUCED ? 0 : 1000;   // draw back against the brake
+  const SPIN_MS_ = REDUCED ? 700 : 6000; // release, accelerate, then friction
+  const HOLD_MS = REDUCED ? 0 : 340;    // hanging on the peg
+  const CREEP_MS = REDUCED ? 200 : 1150; // tipping over into the winner
+  const SETTLE_MS = REDUCED ? 0 : 650;  // rocking into place
+  const FLASH_MS = REDUCED ? 0 : 700;   // the beat before the prize is named
+  const SPIN_MS = WIND_MS + SPIN_MS_ + HOLD_MS + CREEP_MS + SETTLE_MS + FLASH_MS;
+  const WIND_DEG = 16;
+  const RAMP = 0.075; // fraction of the spin act spent accelerating
+  const DECAY = 4.4;  // friction constant: higher = longer crawl at the end
 
   let host = null;
   let prizes = [];
   let angles = [];
   let disc = null;
   let labels = null;
+  let labelNodes = [];
   let pointer = null;
   let flapper = null;
   let rot = 0;
@@ -96,6 +104,7 @@ const Wheel = (() => {
     // ---- rotating disc ----
     disc = el("g", { class: "wheel-disc" });
     labels = el("g", { class: "wheel-labels" });
+    labelNodes = [];
 
     prizes.forEach((p, i) => {
       const seg = angles[i];
@@ -110,19 +119,16 @@ const Wheel = (() => {
       disc.appendChild(g);
 
       if (span >= 14 && p.name) {
-        // radial text: letters advance outward, flipped on the left half so it
-        // is never upside down
+        // radial text, re-oriented as the wheel turns (see orientLabels)
         const rText = rSeg * 0.62;
-        const flip = seg.mid > 180;
-        const g2 = el("g", { transform: `rotate(${seg.mid - 90 + (flip ? 180 : 0)} ${cx} ${cy})` });
+        const g2 = el("g");
         const t = el("text", {
-          x: flip ? cx - rText : cx + rText, y: cy,
-          "text-anchor": "middle", "dominant-baseline": "central",
-          class: "wheel-label",
+          y: cy, "text-anchor": "middle", "dominant-baseline": "central", class: "wheel-label",
         });
         t.textContent = p.name.length > 16 ? p.name.slice(0, 15) + "…" : p.name;
         g2.appendChild(t);
         labels.appendChild(g2);
+        labelNodes.push({ g: g2, text: t, mid: seg.mid, rText, cx, cy, flip: null });
       }
     });
 
@@ -177,8 +183,29 @@ const Wheel = (() => {
     flapper = pointer.querySelector("g");
     box.appendChild(pointer);
 
+    const ring = document.createElement("div");
+    ring.className = "shock";
+    box.appendChild(ring);
+
     host.appendChild(box);
+    setHeat(0);
+    setScale(1);
     apply(0);
+  }
+
+  // Labels are children of the disc, so without this half of them are upside
+  // down whenever the wheel stops. Each one flips as it passes the vertical —
+  // the top and bottom of the wheel — where radial text is neither way up nor
+  // upside down, so the switch is invisible.
+  function orientLabels(deg) {
+    for (const l of labelNodes) {
+      const screen = ((((l.mid + deg) % 360) + 360) % 360);
+      const flip = screen > 180;
+      if (l.flip === flip) continue;
+      l.flip = flip;
+      l.g.setAttribute("transform", `rotate(${l.mid - 90 + (flip ? 180 : 0)} ${l.cx} ${l.cy})`);
+      l.text.setAttribute("x", flip ? l.cx - l.rText : l.cx + l.rText);
+    }
   }
 
   function apply(deg) {
@@ -187,6 +214,7 @@ const Wheel = (() => {
       const c = disc.ownerSVGElement.viewBox.baseVal.width / 2;
       disc.setAttribute("transform", `rotate(${deg.toFixed(3)} ${c} ${c})`);
     }
+    orientLabels(deg);
   }
 
   function dim(winner) {
@@ -200,44 +228,88 @@ const Wheel = (() => {
     if (labels) labels.style.opacity = "1";
   }
 
-  const easeOutCubic = (p) => 1 - Math.pow(1 - p, 3);
-  // constant torque released against constant friction: ω decays exponentially
-  const friction = (p) => (1 - Math.exp(-DECAY * p)) / (1 - Math.exp(-DECAY));
+  const easeInOutCubic = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+  const smoothstep = (p) => p * p * (3 - 2 * p);
+
+  // Distance covered by a velocity curve that ramps up over RAMP and then
+  // decays exponentially — a torque released against constant friction.
+  // Velocity is continuous at the join, so there is no visible kink.
+  function travel(p) {
+    const rampArea = 0.5 * RAMP;
+    const decayed = (x) => ((1 - Math.exp(-DECAY * x)) * (1 - RAMP)) / DECAY;
+    const total = rampArea + decayed(1);
+    const d = p <= RAMP ? (0.5 * p * p) / RAMP : rampArea + decayed((p - RAMP) / (1 - RAMP));
+    return d / total;
+  }
+
+  function setHeat(v) {
+    if (host) host.parentElement.style.setProperty("--heat", v.toFixed(3));
+  }
+  function setScale(v) {
+    if (host) host.parentElement.style.setProperty("--wscale", v.toFixed(4));
+  }
 
   // Animated by hand rather than a CSS transition so the angle can be watched:
-  // that is what makes the flapper flick and the phone tick on every peg.
+  // that is what drives the flapper, the haptics, the blur and the glow.
   function spin(index, onDone) {
     if (spinning || !disc) return;
     spinning = true;
     dim(null);
+    document.body.classList.add("spinning");
 
     const start = ((rot % 360) + 360) % 360;
     apply(start);
     const seg = angles[index];
     const span = seg.end - seg.start;
-    const overshoot = Math.min(3.4, span * 0.22);
-    const launch = start - WIND_DEG;
-    const target = start + Gold.landingRotation(index, angles);
+    const plan = Gold.landingPlan(index, angles);
+    const windTo = start - WIND_DEG;
+    const final = start + plan.rotation;
+    const preStop = final - plan.creep;
+    const rock = Math.min(2.2, span * 0.14);
 
+    const T1 = WIND_MS, T2 = T1 + SPIN_MS_, T3 = T2 + HOLD_MS, T4 = T3 + CREEP_MS, T5 = T4 + SETTLE_MS;
     const t0 = performance.now();
     let lastSeg = Gold.segmentAt(angles, Gold.angleUnderPointer(start));
     let lastDeg = start;
     let lastTick = 0;
     let flick = 0;
 
+    vibrate([0, 12, 90, 18, 90, 26]); // the wind-up, felt
+
     function frame(now) {
       const t = now - t0;
-      let deg;
-      if (t < WIND_MS) {
-        deg = start - WIND_DEG * easeOutCubic(t / WIND_MS);
-      } else if (t < WIND_MS + MAIN_MS) {
-        deg = launch + (target + overshoot - launch) * friction((t - WIND_MS) / MAIN_MS);
-      } else if (t < SPIN_MS) {
-        // the flapper pushes it back off the peg and it rocks into place
-        const u = (t - WIND_MS - MAIN_MS) / SETTLE_MS;
-        deg = target + overshoot * Math.exp(-5.2 * u) * Math.cos(2 * Math.PI * 1.45 * u);
+      let deg, heat, scale;
+
+      if (t < T1) {
+        const p = t / WIND_MS;
+        deg = start + (windTo - start) * easeInOutCubic(p);
+        heat = 0.55 * p;
+        scale = 1 - 0.028 * easeInOutCubic(p);
+      } else if (t < T2) {
+        const p = (t - T1) / SPIN_MS_;
+        deg = windTo + (preStop - windTo) * travel(p);
+        heat = 0.25;
+        scale = 0.972 + 0.083 * Math.min(1, p / 0.1);
+      } else if (t < T3) {
+        // hanging: a tremble, not stillness, or it reads as finished
+        const p = (t - T2) / HOLD_MS;
+        deg = preStop + 0.22 * Math.sin(p * Math.PI * 7) * (1 - p);
+        heat = 0.42 + 0.14 * Math.sin(p * Math.PI * 3);
+        scale = 1.055;
+      } else if (t < T4) {
+        const p = (t - T3) / CREEP_MS;
+        deg = preStop + plan.creep * smoothstep(p);
+        heat = 0.45 + 0.55 * smoothstep(p);
+        scale = 1.055 + 0.042 * smoothstep(p);
+      } else if (t < T5) {
+        const u = (t - T4) / SETTLE_MS;
+        deg = final + rock * Math.exp(-5.4 * u) * Math.cos(2 * Math.PI * 1.5 * u);
+        heat = 1;
+        scale = 1.097 - 0.077 * easeInOutCubic(u);
       } else {
-        deg = target;
+        deg = final;
+        heat = Math.max(0, 1 - (t - T5) / FLASH_MS);
+        scale = 1.02;
       }
 
       const speed = Math.abs(deg - lastDeg);
@@ -245,32 +317,75 @@ const Wheel = (() => {
       apply(deg);
 
       if (!REDUCED) {
+        setHeat(Math.max(heat, clamp(speed / 11, 0, 1)));
+        setScale(scale);
+        disc.style.filter = speed > 2.5 ? `blur(${clamp((speed - 2.5) * 0.28, 0, 2.6).toFixed(2)}px)` : "none";
+
         const s = Gold.segmentAt(angles, Gold.angleUnderPointer(deg));
         if (s !== lastSeg) {
           lastSeg = s;
-          flick = clamp(speed * 1.5, 5, 20);
-          if (now - lastTick > 26) {
+          const decisive = t >= T3 && t < T4; // the one crossing that matters
+          flick = decisive ? 26 : clamp(speed * 1.5, 5, 20);
+          if (decisive) {
+            vibrate(70);
+            pulseRim();
+          } else if (now - lastTick > 26) {
             lastTick = now;
-            vibrate(clamp(Math.round(speed * 1.6), 5, 16));
+            vibrate(clamp(Math.round(speed * 1.7), 5, 18));
           }
         }
         flick *= 0.84;
         if (flapper) flapper.setAttribute("transform", `rotate(${flick.toFixed(2)} 20 9)`);
-        // labels are unreadable at speed; letting them fade back in is the tell
-        // that the wheel is slowing down
-        if (labels) labels.style.opacity = String(clamp(1 - speed / 13, 0.12, 1));
+        // labels are unreadable at speed; letting them resolve is the tell that
+        // the wheel is slowing down
+        if (labels) labels.style.opacity = String(clamp(1 - speed / 13, 0.1, 1));
       }
 
-      if (t < SPIN_MS) requestAnimationFrame(frame);
-      else {
-        if (flapper) flapper.setAttribute("transform", "rotate(0 20 9)");
-        spinning = false;
-        dim(index);
-        vibrate([0, 45, 55, 45, 55, 130]);
-        onDone && onDone();
+      if (t < T5) {
+        requestAnimationFrame(frame);
+      } else if (t < SPIN_MS) {
+        if (!landed) land(index);
+        requestAnimationFrame(frame);
+      } else {
+        finish(onDone);
       }
     }
+
+    let landed = false;
+    function land(i) {
+      landed = true;
+      if (flapper) flapper.setAttribute("transform", "rotate(0 20 9)");
+      disc.style.filter = "none";
+      dim(i);
+      shock();
+      vibrate([0, 50, 60, 50, 60, 150]);
+    }
+    function finish(cb) {
+      spinning = false;
+      document.body.classList.remove("spinning");
+      setScale(1);
+      setHeat(0);
+      if (!landed) land(index);
+      cb && cb();
+    }
+
     requestAnimationFrame(frame);
+  }
+
+  function pulseRim() {
+    const box = host && host.querySelector(".wheel-box");
+    if (!box) return;
+    box.classList.remove("hit");
+    void box.offsetWidth;
+    box.classList.add("hit");
+  }
+
+  function shock() {
+    const ring = host && host.querySelector(".shock");
+    if (!ring) return;
+    ring.classList.remove("go");
+    void ring.offsetWidth;
+    ring.classList.add("go");
   }
 
   const isSpinning = () => spinning;

@@ -124,6 +124,24 @@ for (let i = 0; i < prizes.length; i++) {
   }
 }
 
+// The near-stop must sit OUTSIDE the winning segment, or the final creep does
+// not actually cross a divider and the whole beat is a lie.
+for (let i = 0; i < prizes.length; i++) {
+  for (let k = 0; k < 300; k++) {
+    const plan = G.landingPlan(i, angles);
+    assert.ok(plan.creep > 0);
+    assert.ok(plan.creep <= 21, `creep must stay a crawl, got ${plan.creep.toFixed(1)}`);
+    assert.strictEqual(G.segmentAt(angles, G.angleUnderPointer(plan.rotation)), i, "rests on the winner");
+    const preStop = G.angleUnderPointer(plan.rotation - plan.creep);
+    assert.notStrictEqual(G.segmentAt(angles, preStop), i, "near-stop is one notch short");
+  }
+}
+// frac makes it deterministic: 0 rests nearest the leading edge, 1 deepest in
+const shallow = G.landingPlan(2, angles, { frac: 0, turns: 6 });
+const deep = G.landingPlan(2, angles, { frac: 1, turns: 6 });
+assert.ok(shallow.creep < deep.creep);
+assert.ok(G.angleUnderPointer(shallow.rotation) > G.angleUnderPointer(deep.rotation));
+
 // a single prize fills the wheel and still wins
 const one = [{ id: "only", weight: 5 }];
 assert.strictEqual(G.drawPrize(one).index, 0);

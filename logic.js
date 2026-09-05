@@ -177,18 +177,38 @@
     return angles.length - 1;
   }
 
-  // Where the wheel must stop for `index` to win. Jittered inside the segment
-  // so it never lands dead-centre, padded so it never lands on a boundary.
-  function landingRotation(index, angles, opts) {
+  // Where the wheel must stop for `index` to win, and how far it has to creep
+  // to get there from a near-stop just short of the segment.
+  //
+  // The pointer sweeps local angles downward as the wheel turns forward, so it
+  // enters a segment across `end` and would leave across `start`. Resting
+  // `depth` in from `end` means backing off `depth + gap` puts the pointer
+  // outside the segment entirely — which is the whole trick: the wheel can be
+  // brought to a near halt one notch short and then creep across the divider.
+  function landingPlan(index, angles, opts) {
     const o = opts || {};
     const rand = o.rand || Math.random;
-    const turns = o.turns == null ? 5 + Math.floor(rand() * 3) : o.turns;
+    const turns = o.turns == null ? 6 + Math.floor(rand() * 3) : o.turns;
     const seg = angles[index];
     const span = seg.end - seg.start;
-    const pad = Math.min(span * 0.18, 5);
-    const a = seg.start + pad + rand() * Math.max(0, span - 2 * pad);
-    return turns * 360 + ((360 - (a % 360)) % 360);
+    const pad = Math.min(span * 0.2, 5);
+    const frac = o.frac == null ? rand() : Math.min(1, Math.max(0, o.frac));
+    // Rest shallow — within ~14 degrees of the leading edge — so the final
+    // creep stays a crawl instead of becoming another roll. It does mean the
+    // pointer always settles just past a divider; the odds are untouched, only
+    // where inside the winning wedge it comes to rest.
+    const maxDepth = Math.min(span - pad, Math.max(pad + 1, 14));
+    const depth = pad + frac * Math.max(0, maxDepth - pad);
+    const a = seg.end - depth;
+    const gap = Math.min(6, Math.max(1.5, span * 0.12));
+    return {
+      rotation: turns * 360 + ((360 - (a % 360) + 360) % 360),
+      creep: depth + gap,
+      angle: a,
+    };
   }
+
+  const landingRotation = (index, angles, opts) => landingPlan(index, angles, opts).rotation;
 
   // ---------- settings ----------
 
@@ -206,7 +226,7 @@
     effectiveTarget, dayQualifies, runLengths, currentStreak,
     ticketsOwed, ticketKey, reconcileTickets, unspentTickets,
     activePrizes, totalWeight, probabilityFor, drawPrize,
-    segmentAngles, angleUnderPointer, segmentAt, landingRotation,
+    segmentAngles, angleUnderPointer, segmentAt, landingPlan, landingRotation,
     defaultSettings,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

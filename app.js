@@ -44,6 +44,8 @@ function effTargetToday() {
 // ---------- views ----------
 
 function showView(name) {
+  // leaving mid-spin would rebuild the wheel under the animation and strand it
+  if (Wheel.isSpinning()) return;
   document.querySelectorAll(".view").forEach((v) => (v.hidden = true));
   $(`#view-${name}`).hidden = false;
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === name));
