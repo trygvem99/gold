@@ -46,6 +46,9 @@ and adding a habit today cannot retroactively break a live streak.
   net** — the Backup card nags once the last export is over 14 days old.
 - **No reminders.** A PWA with no server cannot reliably nudge you at 21:00, and
   cannot put a widget on the Android home screen. You have to open it.
+- **Sound needs a tap first.** Browsers refuse audio until you have interacted
+  with the page, so the first sound of a session is the one you triggered.
+  Turn it off in Settings → Sound.
 - **The repo is public** (that is what free GitHub Pages requires). It holds code
   and the default seed only; your habits, streak and vault never leave the phone.
 - **It does not police you.** You can check a box you did not earn. The app makes
@@ -75,7 +78,8 @@ node scripts/test-logic.js   # pure-function tests
 - `index.html` / `app.js` / `styles.css` — the app (Today, Wheel, Vault, Settings)
 - `logic.js` — every rule: points, qualifying days, streaks, ticket
   reconciliation, weighted draw, wheel geometry. Pure, and tested in node.
-- `wheel.js` — SVG wheel, spin animation, tick haptics, confetti
+- `wheel.js` — the wheel: 48 pegs, marquee rim, five-act spin, haptics, confetti
+- `sound.js` — every sound synthesised with Web Audio; no audio files ship
 - `db.js` — IndexedDB layer, backup and restore
 - `seed.json` — the habits and prizes a fresh install starts with
 - `manifest.webmanifest` / `sw.js` / `icon.svg` — PWA shell

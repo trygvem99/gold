@@ -129,6 +129,21 @@ input[type="color"] {
 }
 input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
 input[type="color"]::-webkit-color-swatch { border: none; border-radius: 7px; }
+input.switch {
+  appearance: none; -webkit-appearance: none;
+  width: 48px; height: 28px; max-width: none; flex: 0 0 auto;
+  border-radius: 999px; background: #0F0F16; border: 1px solid var(--line);
+  position: relative; cursor: pointer; padding: 0;
+  transition: background 0.2s, border-color 0.2s;
+}
+input.switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--dim);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s;
+}
+input.switch:checked { background: rgba(232, 185, 74, 0.2); border-color: var(--gold); }
+input.switch:checked::after { transform: translateX(20px); background: linear-gradient(180deg, var(--gold-hi), var(--gold)); }
 
 /* ---------- today: hero ---------- */
 
@@ -281,11 +296,14 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: 7px; }
   position: relative;
   display: flex;
   justify-content: center;
-  padding: 6px 0 2px;
-  transform: scale(var(--wscale, 1));
+  padding: 10px 0 2px;
+  perspective: 1100px;
+  transform: translate(var(--shx, 0px), var(--shy, 0px)) scale(var(--wscale, 1));
 }
 /* driven per frame while spinning, so the easing only belongs to the release */
 body:not(.spinning) .wheel-stage { transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
+/* seen from slightly above, like a wheel on a stand rather than a pie chart */
+.wheel-box { transform: rotateX(13deg); transform-style: preserve-3d; }
 .wheel-glow {
   position: absolute;
   width: 96%; aspect-ratio: 1;
@@ -339,7 +357,35 @@ body.spinning .spin-btn { opacity: 0; transform: scale(0.96); pointer-events: no
 }
 #wheel-host { position: relative; width: 100%; display: flex; justify-content: center; }
 .wheel-box { position: relative; }
-.wheel-svg { display: block; }
+.wheel-svg { display: block; filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.75)); }
+.peg { fill: #F7DFA0; }
+.peg-shadow { fill: rgba(0, 0, 0, 0.6); }
+.peg-hi { fill: #FFFDF5; }
+.bulb-glow { transition: opacity 0.09s linear; }
+.bulbs.strobe { animation: strobe 0.16s steps(1) 6; }
+@keyframes strobe { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.25; } }
+
+/* light rays behind the winning wedge */
+.rays {
+  position: absolute;
+  inset: -42%;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(255, 232, 170, 0.5) 0deg 4deg,
+    transparent 4deg 15deg
+  );
+  -webkit-mask-image: radial-gradient(circle, transparent 26%, #000 42%, transparent 72%);
+  mask-image: radial-gradient(circle, transparent 26%, #000 42%, transparent 72%);
+}
+.rays.go { animation: rays 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+@keyframes rays {
+  0% { opacity: 0; transform: rotate(0deg) scale(0.75); }
+  22% { opacity: 0.95; }
+  100% { opacity: 0; transform: rotate(26deg) scale(1.15); }
+}
 .wheel-disc { will-change: transform; }
 .wheel-label {
   font: 600 11px/1 system-ui, -apple-system, "Segoe UI", sans-serif;

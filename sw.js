@@ -1,7 +1,7 @@
 // Network-first with cache fallback: offline works, and new deploys are picked
 // up automatically without a cache-name bump per deploy.
-const CACHE = "gold-v1";
-const SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./logic.js", "./db.js", "./wheel.js", "./manifest.webmanifest", "./icon.svg", "./seed.json"];
+const CACHE = "gold-v2";
+const SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./logic.js", "./db.js", "./sound.js", "./wheel.js", "./manifest.webmanifest", "./icon.svg", "./seed.json"];
 
 self.addEventListener("install", (e) => {
   // addAll() also reads through the HTTP cache, so without cache:"reload" the

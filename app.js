@@ -27,8 +27,9 @@ const ICON = {
     '-1 1.4-1.6 2.7-1.6 4.2 0 .8.2 1.5.6 2.1-.9-.4-1.6-1.1-2-2C5.6 13.6 5 15 5 16.4 5 19.9 8.1 22 12 22s7-2.4 ' +
     '7-6.2c0-2.6-1.3-4.7-2.9-6.4-.3 1.3-1 2.1-1.9 2.5.7-2.9-.2-6.5-1.6-9.9z"/></svg>',
 };
-// deep jewel tones: saturated brights turn the wheel into clip art next to gold
-const PRIZE_COLORS = ["#4C2A85", "#8E2743", "#A8541C", "#1F6B5B", "#23457A", "#6B2E6B", "#7A6A16", "#8C3520"];
+// luminous, well separated in hue: the wedges are shaded in wheel.js, so flat
+// darks come out muddy while these hold their colour under the vignette
+const PRIZE_COLORS = ["#7B3FE4", "#D62C5B", "#E8801C", "#12A37E", "#2A7BE4", "#C2298F", "#C9A227", "#E0533A"];
 
 // ---------- helpers ----------
 
@@ -152,6 +153,9 @@ async function bump(habit, delta, row) {
   days = days.filter((d) => d.date !== today).concat(rec);
 
   Wheel.vibrate(next > cur ? 12 : 6);
+  const act = activeHabits();
+  if (next > cur) Sfx.blip(Gold.pointsForDay(counts, act) / Math.max(1, effTargetToday()));
+  else Sfx.thunk();
   if (row && next > cur) {
     if (next >= t) { row.classList.add("sweeping"); setTimeout(() => row.classList.remove("sweeping"), 800); }
     const pip = row.querySelectorAll(".pip")[next - 1];
@@ -202,6 +206,7 @@ function showNextTicket() {
     ? `${Gold.currentStreak(days, habits, settings.daily_points_target, today)} days in a row`
     : `${effTargetToday()} points today`;
   $("#ticket-overlay").hidden = false;
+  Sfx.earned(streak);
   // restart the entrance and the shimmer sweep for a second ticket in a row
   [card, card.querySelector(".shimmer")].forEach((n) => {
     n.style.animation = "none";
@@ -340,6 +345,8 @@ function renderSettings() {
   const max = Gold.maxPointsForDay(Gold.activeHabits(habits));
   $("#target-hint").textContent = `${max} points possible per day right now.`;
 
+  $("#set-sound").checked = !Sfx.isMuted();
+
   const last = Number(localStorage.getItem("gold_last_backup") || 0);
   const daysAgo = last ? Math.floor((Date.now() - last) / 86400000) : null;
   $("#backup-hint").textContent = last
@@ -418,6 +425,11 @@ function editHabit(h) {
 }
 
 $("#add-habit-btn").addEventListener("click", () => editHabit(null));
+
+$("#set-sound").addEventListener("change", (e) => {
+  Sfx.setMuted(!e.target.checked);
+  if (e.target.checked) { Sfx.unlock(); Sfx.earned(false); }
+});
 
 $("#save-deal-btn").addEventListener("click", async () => {
   settings = Object.assign({}, settings, {
