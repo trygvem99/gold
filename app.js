@@ -19,7 +19,16 @@ let wheelPrizes = [];
 let pendingWin = null;
 
 const RING_C = 2 * Math.PI * 60;
-const PRIZE_COLORS = ["#E8B94A", "#7C4DFF", "#E0447C", "#2FA98C", "#3D7BE0", "#FF7A45", "#9AE86B", "#E85A5A"];
+const ICON = {
+  ticket: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M4 7h16a1.5 1.5 0 0 1 1.5 1.5V10a2 2 0 0 0 0 4v1.5A1.5 1.5 0 0 1 20 17H4a1.5 1.5 0 0 1-1.5-1.5V14a2 2 0 0 0 0-4V8.5A1.5 1.5 0 0 1 4 7z"/>' +
+    '<path d="M9.5 8.2v1.5M9.5 11.2v1.5M9.5 14.3v1.5"/></svg>',
+  flame: '<svg class="ico flame" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.6 2c.4 3-1.8 4.4-3 6.1' +
+    '-1 1.4-1.6 2.7-1.6 4.2 0 .8.2 1.5.6 2.1-.9-.4-1.6-1.1-2-2C5.6 13.6 5 15 5 16.4 5 19.9 8.1 22 12 22s7-2.4 ' +
+    '7-6.2c0-2.6-1.3-4.7-2.9-6.4-.3 1.3-1 2.1-1.9 2.5.7-2.9-.2-6.5-1.6-9.9z"/></svg>',
+};
+// deep jewel tones: saturated brights turn the wheel into clip art next to gold
+const PRIZE_COLORS = ["#4C2A85", "#8E2743", "#A8541C", "#1F6B5B", "#23457A", "#6B2E6B", "#7A6A16", "#8C3520"];
 
 // ---------- helpers ----------
 
@@ -184,7 +193,7 @@ function showNextTicket() {
   const streak = t.reason === "streak";
   const card = $("#ticket-card");
   card.classList.toggle("streak", streak);
-  card.querySelector(".ticket-stub").textContent = streak ? "🔥" : "🎟️";
+  card.querySelector(".ticket-stub").innerHTML = streak ? ICON.flame : ICON.ticket;
   $("#ticket-kicker").textContent = streak ? "STREAK BONUS" : "SPIN EARNED";
   $("#ticket-title").textContent = streak ? "Bonus spin" : "One spin of the wheel";
   $("#ticket-sub").textContent = streak
@@ -217,9 +226,9 @@ function renderWheel() {
   const mine = unspent();
   strip.innerHTML = mine.length === 0
     ? '<span class="hint">No tickets yet</span>'
-    : mine.slice(0, 3).map((t) =>
-        `<span class="stub${t.reason === "streak" ? " streak" : ""}">${t.reason === "streak" ? "🔥" : "🎟️"} ${esc(Gold.prettyDate(t.date))}</span>`
-      ).join("") + (mine.length > 3 ? `<span class="stub">+${mine.length - 3} more</span>` : "");
+    : mine.slice(0, 2).map((t) =>
+        `<span class="stub${t.reason === "streak" ? " streak" : ""}">${t.reason === "streak" ? ICON.flame : ICON.ticket} ${esc(Gold.prettyDate(t.date))}</span>`
+      ).join("") + (mine.length > 2 ? `<span class="stub">+${mine.length - 2} more</span>` : "");
 
   const weighted = Gold.totalWeight(wheelPrizes) > 0;
   const btn = $("#spin-btn");

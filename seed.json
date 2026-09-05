@@ -8,10 +8,10 @@
     { "name": "Lights out by 23:00", "emoji": "🌙", "target": 1 }
   ],
   "prizes": [
-    { "name": "Night out", "emoji": "🍸", "color": "#7C4DFF", "weight": 3 },
-    { "name": "Dinner out", "emoji": "🍽️", "color": "#E0447C", "weight": 5 },
-    { "name": "Cheat meal", "emoji": "🍔", "color": "#E8B94A", "weight": 12 },
-    { "name": "Bakery run", "emoji": "🥐", "color": "#2FA98C", "weight": 14 },
-    { "name": "Cinema", "emoji": "🎬", "color": "#3D7BE0", "weight": 8 }
+    { "name": "Night out", "emoji": "🍸", "color": "#4C2A85", "weight": 3 },
+    { "name": "Dinner out", "emoji": "🍽️", "color": "#8E2743", "weight": 5 },
+    { "name": "Cheat meal", "emoji": "🍔", "color": "#A8541C", "weight": 12 },
+    { "name": "Bakery run", "emoji": "🥐", "color": "#1F6B5B", "weight": 14 },
+    { "name": "Cinema", "emoji": "🎬", "color": "#23457A", "weight": 8 }
   ]
 }
