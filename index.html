@@ -48,8 +48,19 @@
         </div>
       </div>
 
+      <div class="notice" id="bar-notice" hidden>
+        <div id="bar-notice-text"></div>
+        <button class="linkish" id="bar-notice-undo" type="button">Undo</button>
+      </div>
+
       <div id="habit-list"></div>
       <p class="hint" id="today-hint"></p>
+
+      <h3 class="sub" id="week-head" hidden>This week</h3>
+      <div id="week-list"></div>
+
+      <h3 class="sub" id="quarter-head" hidden>This quarter</h3>
+      <div id="quarter-list"></div>
     </section>
 
     <!-- WHEEL -->
@@ -84,6 +95,20 @@
       </div>
 
       <div class="card">
+        <h3>This week</h3>
+        <p class="hint">One-off goals. Worth the same as one habit, on the day you finish them.</p>
+        <div id="week-editor"></div>
+        <button class="btn small" id="add-week-btn" type="button">+ Add one-off goal</button>
+      </div>
+
+      <div class="card">
+        <h3>Quarterly goals</h3>
+        <p class="hint">Big goals. Finishing one pays tickets outright.</p>
+        <div id="quarter-editor"></div>
+        <button class="btn small" id="add-quarter-btn" type="button">+ Add quarterly goal</button>
+      </div>
+
+      <div class="card">
         <h3>The deal</h3>
         <label class="field">
           <span>Points needed for a spin</span>
@@ -94,6 +119,11 @@
           <span>Bonus spin every N days in a row</span>
           <input type="number" id="set-streak" min="2" step="1" inputmode="numeric" />
         </label>
+        <label class="field">
+          <span>Let the bar move on its own</span>
+          <input type="checkbox" id="set-adapt" class="switch" />
+        </label>
+        <p class="hint" id="adapt-hint"></p>
         <button class="btn small primary" id="save-deal-btn" type="button">Save</button>
         <span class="saved" id="deal-saved" hidden>Saved ✓</span>
       </div>
@@ -161,11 +191,12 @@
   <!-- prize won -->
   <div class="overlay" id="win-overlay" hidden>
     <div class="win-scene">
-      <div class="win-kicker">YOU WON</div>
+      <div class="win-kicker" id="win-kicker">YOU WON</div>
       <div class="win-card" id="win-card">
         <div class="win-emoji" id="win-emoji"></div>
         <div class="win-name" id="win-name"></div>
       </div>
+      <p class="hint center" id="win-sub" hidden></p>
       <button class="btn primary" id="win-ok" type="button">Add to vault</button>
     </div>
   </div>

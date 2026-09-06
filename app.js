@@ -7,6 +7,7 @@ const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 let habits = [];
+let goals = [];
 let days = [];
 let tickets = [];
 let prizes = [];
@@ -27,9 +28,9 @@ const ICON = {
     '-1 1.4-1.6 2.7-1.6 4.2 0 .8.2 1.5.6 2.1-.9-.4-1.6-1.1-2-2C5.6 13.6 5 15 5 16.4 5 19.9 8.1 22 12 22s7-2.4 ' +
     '7-6.2c0-2.6-1.3-4.7-2.9-6.4-.3 1.3-1 2.1-1.9 2.5.7-2.9-.2-6.5-1.6-9.9z"/></svg>',
 };
-// luminous, well separated in hue: the wedges are shaded in wheel.js, so flat
-// darks come out muddy while these hold their colour under the vignette
-const PRIZE_COLORS = ["#7B3FE4", "#D62C5B", "#E8801C", "#12A37E", "#2A7BE4", "#C2298F", "#C9A227", "#E0533A"];
+// muted, materially named: these show as a thin band at the rim and a swatch
+// in the lists, never as a whole wedge, so they can afford to be restrained
+const PRIZE_COLORS = ["#B08D57", "#8C5A6B", "#A8763E", "#6E8B6A", "#5B7A8C", "#6B6488", "#9C6B4A", "#7A8B99"];
 
 // ---------- helpers ----------
 
@@ -38,9 +39,8 @@ const activeHabits = () => Gold.habitsActiveOn(habits, today);
 const activePrizes = () => Gold.activePrizes(prizes);
 const unspent = () => Gold.unspentTickets(tickets);
 
-function effTargetToday() {
-  return Gold.effectiveTarget(settings.daily_points_target, Gold.maxPointsForDay(activeHabits()));
-}
+const statsToday = () => Gold.dayStats(dayRecord(today), habits, goals, settings);
+const effTargetToday = () => statsToday().target;
 
 // ---------- views ----------
 
@@ -71,9 +71,8 @@ function renderBadge() {
 function renderToday() {
   const act = activeHabits();
   const day = dayRecord(today);
-  const points = Gold.pointsForDay(day.counts, act);
-  const max = Gold.maxPointsForDay(act);
-  const target = effTargetToday();
+  const st = Gold.dayStats(day, habits, goals, settings);
+  const points = st.points, max = st.max, target = st.target;
 
   $("#hero-date").textContent = Gold.prettyDate(today);
   $("#ring-points").textContent = points;
@@ -95,7 +94,7 @@ function renderToday() {
   }
   document.querySelector(".ring-wrap").classList.toggle("complete", target > 0 && points >= target);
 
-  const streak = Gold.currentStreak(days, habits, settings.daily_points_target, today);
+  const streak = Gold.currentStreak(days, habits, goals, settings, today);
   $("#streak-num").textContent = streak;
   $("#streak-stat").classList.toggle("live", streak > 0);
   const spins = unspent().length;
@@ -138,6 +137,88 @@ function renderToday() {
     : left > 0
       ? `${left} more point${left === 1 ? "" : "s"} for a spin — ${target} of ${max} possible.`
       : `Spin earned. ${points} of ${max} possible today.`;
+
+  renderGoalLists();
+}
+
+// ---------- goals on Today ----------
+
+function renderGoalLists() {
+  const week = Gold.openGoals(goals, "week");
+  $("#week-head").hidden = week.length === 0;
+  const wl = $("#week-list");
+  wl.innerHTML = "";
+  for (const g of week) {
+    const row = document.createElement("div");
+    row.className = "habit goal";
+    row.innerHTML =
+      '<div class="sweep"></div>' +
+      `<div class="habit-emoji">${esc(g.emoji || "◇")}</div>` +
+      `<div class="habit-main"><div class="habit-name">${esc(g.name)}</div>` +
+      '<div class="habit-meta">one-off · 1 point</div></div>' +
+      '<div class="pips"><span class="pip"></span></div>';
+    row.addEventListener("click", () => finishGoal(g, row));
+    wl.appendChild(row);
+  }
+
+  const q = Gold.openGoals(goals, "quarter");
+  $("#quarter-head").hidden = q.length === 0;
+  const ql = $("#quarter-list");
+  ql.innerHTML = "";
+  for (const g of q) {
+    const n = Gold.goalTickets(g);
+    const row = document.createElement("div");
+    row.className = "habit goal big";
+    row.innerHTML =
+      '<div class="sweep"></div>' +
+      `<div class="habit-emoji">${esc(g.emoji || "◆")}</div>` +
+      `<div class="habit-main"><div class="habit-name">${esc(g.name)}</div>` +
+      `<div class="habit-meta">${esc(g.period || Gold.quarterOf(today))} · pays ${n} spin${n === 1 ? "" : "s"}</div></div>` +
+      '<div class="pips"><span class="pip"></span></div>';
+    row.addEventListener("click", () => finishGoal(g, row));
+    ql.appendChild(row);
+  }
+}
+
+// A one-off is worth a point on the day it is finished. A quarterly goal pays
+// tickets outright, tagged with its id so undoing it takes them back.
+async function finishGoal(goal, row) {
+  const rec = Object.assign({}, goal, { done_at: new Date().toISOString() });
+  await Data.goals.put(rec);
+  goals = goals.map((g) => (g.id === rec.id ? rec : g));
+
+  if (row) { row.classList.add("sweeping", "done"); row.querySelector(".pip").classList.add("on"); }
+  Wheel.vibrate(goal.kind === "quarter" ? [0, 40, 60, 40, 60, 120] : 14);
+
+  let announce = [];
+  if (goal.kind === "quarter") {
+    const n = Gold.goalTickets(goal);
+    const now = new Date().toISOString();
+    const rows = Array.from({ length: n }, () => ({
+      id: Data.newId(), date: today, reason: "goal", source: goal.id,
+      created_at: now, spent_at: null, win_id: null,
+    }));
+    await Data.tickets.bulkPut(rows);
+    tickets = tickets.concat(rows);
+    announce = rows.slice(0, 1).map((r) => Object.assign({}, r, { count: n, goal: goal.name }));
+  } else {
+    Sfx.blip(1);
+    announce = await syncTickets();
+  }
+  setTimeout(() => { renderToday(); if (announce.length) announceTickets(announce); }, 420);
+}
+
+async function reopenGoal(goal) {
+  const rec = Object.assign({}, goal, { done_at: null });
+  await Data.goals.put(rec);
+  goals = goals.map((g) => (g.id === rec.id ? rec : g));
+  // unspent tickets that goal paid for are taken back; spent ones are not
+  const revoke = tickets.filter((t) => t.source === goal.id && !t.spent_at).map((t) => t.id);
+  if (revoke.length) {
+    await Data.tickets.bulkDel(revoke);
+    tickets = tickets.filter((t) => revoke.indexOf(t.id) === -1);
+  }
+  await syncTickets();
 }
 
 async function bump(habit, delta, row) {
@@ -173,7 +254,7 @@ async function bump(habit, delta, row) {
 // never be minted twice for the same day and an unspent one vanishes again if
 // the day falls back below the threshold.
 async function syncTickets() {
-  const owed = Gold.ticketsOwed(days, habits, settings, today);
+  const owed = Gold.ticketsOwed(days, habits, goals, settings, today);
   const { toAdd, toDeleteIds } = Gold.reconcileTickets(tickets, owed);
   const now = new Date().toISOString();
   const rows = toAdd.map((t) => ({
@@ -197,14 +278,20 @@ function showNextTicket() {
   const t = ticketQueue.shift();
   if (!t) { $("#ticket-overlay").hidden = true; return; }
   const streak = t.reason === "streak";
+  const goal = t.reason === "goal";
   const card = $("#ticket-card");
   card.classList.toggle("streak", streak);
+  card.classList.toggle("goal", goal);
   card.querySelector(".ticket-stub").innerHTML = streak ? ICON.flame : ICON.ticket;
-  $("#ticket-kicker").textContent = streak ? "STREAK BONUS" : "SPIN EARNED";
-  $("#ticket-title").textContent = streak ? "Bonus spin" : "One spin of the wheel";
-  $("#ticket-sub").textContent = streak
-    ? `${Gold.currentStreak(days, habits, settings.daily_points_target, today)} days in a row`
-    : `${effTargetToday()} points today`;
+  $("#ticket-kicker").textContent = goal ? "GOAL COMPLETE" : streak ? "STREAK BONUS" : "SPIN EARNED";
+  $("#ticket-title").textContent = goal
+    ? `${t.count} spins`
+    : streak ? "Bonus spin" : "One spin of the wheel";
+  $("#ticket-sub").textContent = goal
+    ? t.goal
+    : streak
+      ? `${Gold.currentStreak(days, habits, goals, settings, today)} days in a row`
+      : `${effTargetToday()} points today`;
   $("#ticket-overlay").hidden = false;
   Sfx.earned(streak);
   // restart the entrance and the shimmer sweep for a second ticket in a row
@@ -263,19 +350,25 @@ $("#spin-btn").addEventListener("click", async () => {
   const draw = Gold.drawPrize(wheelPrizes);
   if (!ticket || !draw) return;
 
+  const blank = !!draw.prize.blank;
+  const at = new Date().toISOString();
+
   // Persisted before the animation: if the app dies mid-spin the ticket is
   // spent and the prize is already in the vault, never the other way round.
-  const win = {
-    id: Data.newId(),
-    prize_name: draw.prize.name,
-    prize_emoji: draw.prize.emoji,
-    prize_color: draw.prize.color,
-    won_at: new Date().toISOString(),
-    redeemed_at: null,
-  };
-  await Data.wins.put(win);
-  wins = wins.concat(win);
-  const spentTicket = Object.assign({}, ticket, { spent_at: win.won_at, win_id: win.id });
+  let win = null;
+  if (!blank) {
+    win = {
+      id: Data.newId(),
+      prize_name: draw.prize.name,
+      prize_emoji: draw.prize.emoji,
+      prize_color: draw.prize.color,
+      won_at: at,
+      redeemed_at: null,
+    };
+    await Data.wins.put(win);
+    wins = wins.concat(win);
+  }
+  const spentTicket = Object.assign({}, ticket, { spent_at: at, win_id: win ? win.id : null });
   await Data.tickets.put(spentTicket);
   tickets = tickets.map((t) => (t.id === ticket.id ? spentTicket : t));
 
@@ -283,12 +376,29 @@ $("#spin-btn").addEventListener("click", async () => {
   $("#ticket-strip").innerHTML = "";
   pendingWin = win;
   Wheel.spin(draw.index, () => {
-    Wheel.burst(draw.prize.color);
-    $("#win-emoji").textContent = draw.prize.emoji || "🎁";
-    $("#win-name").textContent = draw.prize.name;
-    $("#win-card").style.borderColor = draw.prize.color;
+    const card = $("#win-card");
+    card.classList.toggle("blank", blank);
+    $("#win-overlay").classList.toggle("blank", blank);
+    if (blank) {
+      $("#win-kicker").textContent = "NOTHING THIS TIME";
+      $("#win-emoji").textContent = "—";
+      $("#win-name").textContent = draw.prize.name || "No luck";
+      card.style.borderColor = "var(--line)";
+      const left = unspent().length;
+      $("#win-sub").textContent = left ? `${left} spin${left === 1 ? "" : "s"} left.` : "That was your last spin.";
+      $("#win-sub").hidden = false;
+      $("#win-ok").textContent = "Fine";
+    } else {
+      Wheel.burst(draw.prize.color);
+      $("#win-kicker").textContent = "YOU WON";
+      $("#win-emoji").textContent = draw.prize.emoji || "🎁";
+      $("#win-name").textContent = draw.prize.name;
+      card.style.borderColor = draw.prize.color;
+      $("#win-sub").hidden = true;
+      $("#win-ok").textContent = "Add to vault";
+    }
     $("#win-overlay").hidden = false;
-  });
+  }, { blank });
 });
 
 $("#win-ok").addEventListener("click", () => {
@@ -339,11 +449,17 @@ function renderVault() {
 
 function renderSettings() {
   renderHabitsEditor();
+  renderGoalEditor("week");
+  renderGoalEditor("quarter");
   renderPrizesEditor();
   $("#set-target").value = settings.daily_points_target;
   $("#set-streak").value = settings.streak_length;
+  $("#set-adapt").checked = settings.adapt !== false;
   const max = Gold.maxPointsForDay(Gold.activeHabits(habits));
   $("#target-hint").textContent = `${max} points possible per day right now.`;
+  $("#adapt-hint").textContent =
+    `Hit it ${Gold.ADAPT.up} of ${Gold.ADAPT.window} days and it rises by one; ` +
+    `${Gold.ADAPT.down} or fewer and it drops. At most once every ${Gold.ADAPT.cooldown} days.`;
 
   $("#set-sound").checked = !Sfx.isMuted();
 
@@ -426,16 +542,98 @@ function editHabit(h) {
 
 $("#add-habit-btn").addEventListener("click", () => editHabit(null));
 
+// ---------- goal editors ----------
+
+function renderGoalEditor(kind) {
+  const host = $(kind === "week" ? "#week-editor" : "#quarter-editor");
+  const open = Gold.openGoals(goals, kind);
+  const done = Gold.doneGoals(goals, kind);
+  host.innerHTML = "";
+  if (!open.length && !done.length) {
+    host.innerHTML = '<p class="hint">Nothing here yet.</p>';
+    return;
+  }
+  for (const g of open.concat(done)) {
+    const row = document.createElement("div");
+    row.className = "row" + (g.done_at ? " struck" : "");
+    const sub = g.done_at
+      ? `done ${esc(Gold.prettyDate(g.done_at.slice(0, 10)))}`
+      : kind === "quarter" ? `${Gold.goalTickets(g)} spins · ${esc(g.period || "")}` : "1 point when finished";
+    row.innerHTML =
+      `<div class="row-emoji">${esc(g.emoji || (kind === "quarter" ? "◆" : "◇"))}</div>` +
+      `<div class="row-main"><div class="row-name">${esc(g.name)}</div><div class="row-sub">${sub}</div></div>` +
+      (g.done_at ? '<button class="btn small" type="button" data-reopen="1">Undo</button>' : "") +
+      '<button class="btn small" type="button" data-edit="1">Edit</button>';
+    row.querySelector("[data-edit]").addEventListener("click", () => editGoal(kind, g));
+    const re = row.querySelector("[data-reopen]");
+    if (re) re.addEventListener("click", async () => { await reopenGoal(g); renderSettings(); });
+    host.appendChild(row);
+  }
+}
+
+function editGoal(kind, g) {
+  const isNew = !g;
+  const goal = g || {
+    id: Data.newId(), kind, name: "", emoji: kind === "quarter" ? "◆" : "◇",
+    tickets: 3, period: kind === "quarter" ? Gold.quarterOf(today) : null,
+    order: Gold.openGoals(goals, kind).length,
+    created_at: new Date().toISOString(), archived_at: null, done_at: null,
+  };
+  const fields = [
+    { key: "name", label: "Name", type: "text", value: goal.name },
+    { key: "emoji", label: "Emoji", type: "text", value: goal.emoji },
+  ];
+  if (kind === "quarter") {
+    fields.push({ key: "tickets", label: "Spins it pays", type: "number", value: Gold.goalTickets(goal), min: 1 });
+    fields.push({ key: "period", label: "Quarter", type: "text", value: goal.period || Gold.quarterOf(today) });
+  }
+  openEditor({
+    title: isNew ? (kind === "quarter" ? "New quarterly goal" : "New one-off goal") : "Edit goal",
+    fields,
+    canDelete: !isNew,
+    onSave: async (v) => {
+      if (!v.name.trim()) return false;
+      const rec = Object.assign({}, goal, {
+        name: v.name.trim(),
+        emoji: v.emoji.trim() || (kind === "quarter" ? "◆" : "◇"),
+      });
+      if (kind === "quarter") {
+        rec.tickets = Math.max(1, Number(v.tickets) || 3);
+        rec.period = (v.period || "").trim() || Gold.quarterOf(today);
+      }
+      await Data.goals.put(rec);
+      goals = goals.filter((x) => x.id !== rec.id).concat(rec);
+      await syncTickets();
+      renderSettings();
+      return true;
+    },
+    // archived, never deleted: a finished goal's day still has to add up
+    onDelete: async () => {
+      const rec = Object.assign({}, goal, { archived_at: new Date().toISOString() });
+      await Data.goals.put(rec);
+      goals = goals.map((x) => (x.id === rec.id ? rec : x));
+      await syncTickets();
+      renderSettings();
+    },
+  });
+}
+
+$("#add-week-btn").addEventListener("click", () => editGoal("week", null));
+$("#add-quarter-btn").addEventListener("click", () => editGoal("quarter", null));
+
 $("#set-sound").addEventListener("change", (e) => {
   Sfx.setMuted(!e.target.checked);
   if (e.target.checked) { Sfx.unlock(); Sfx.earned(false); }
 });
 
 $("#save-deal-btn").addEventListener("click", async () => {
+  const target = Math.max(1, Number($("#set-target").value) || 1);
   settings = Object.assign({}, settings, {
-    daily_points_target: Math.max(1, Number($("#set-target").value) || 1),
     streak_length: Math.max(2, Number($("#set-streak").value) || 7),
+    adapt: $("#set-adapt").checked,
   });
+  // dated, so setting it by hand does not re-judge days already banked
+  if (target !== settings.daily_points_target) settings = Gold.applyTarget(settings, target, today);
   await Data.saveSettings(settings);
   await syncTickets();
   renderSettings();
@@ -492,6 +690,7 @@ function editPrize(p) {
       { key: "emoji", label: "Emoji", type: "text", value: prize.emoji },
       { key: "color", label: "Colour", type: "color", value: prize.color },
       { key: "weight", label: "Weight (higher = more likely)", type: "number", value: prize.weight, min: 0 },
+      { key: "blank", label: "Wins nothing", type: "checkbox", value: !!prize.blank },
     ],
     canDelete: !isNew,
     onSave: async (v) => {
@@ -499,6 +698,7 @@ function editPrize(p) {
       const rec = Object.assign({}, prize, {
         name: v.name.trim(), emoji: v.emoji.trim(), color: v.color,
         weight: Math.max(0, Number(v.weight) || 0),
+        blank: !!v.blank,
       });
       await Data.prizes.put(rec);
       prizes = prizes.filter((x) => x.id !== rec.id).concat(rec);
@@ -525,10 +725,13 @@ function openEditor(ctx) {
   editorCtx = ctx;
   $("#editor-title").textContent = ctx.title;
   $("#editor-fields").innerHTML = ctx.fields.map((f) =>
-    `<label class="field"><span>${esc(f.label)}</span>` +
-    `<input id="ed-${f.key}" type="${f.type}" value="${esc(f.value)}"` +
-    (f.min != null ? ` min="${f.min}"` : "") +
-    (f.type === "number" ? ' step="1" inputmode="numeric"' : "") + " /></label>"
+    f.type === "checkbox"
+      ? `<label class="field row-field"><span>${esc(f.label)}</span>` +
+        `<input id="ed-${f.key}" type="checkbox" class="switch"${f.value ? " checked" : ""} /></label>`
+      : `<label class="field"><span>${esc(f.label)}</span>` +
+        `<input id="ed-${f.key}" type="${f.type}" value="${esc(f.value)}"` +
+        (f.min != null ? ` min="${f.min}"` : "") +
+        (f.type === "number" ? ' step="1" inputmode="numeric"' : "") + " /></label>"
   ).join("");
   $("#editor-delete").hidden = !ctx.canDelete;
   $("#editor-modal").hidden = false;
@@ -543,7 +746,10 @@ $("#editor-cancel").addEventListener("click", closeEditor);
 $("#editor-modal").addEventListener("click", (e) => { if (e.target.id === "editor-modal") closeEditor(); });
 $("#editor-save").addEventListener("click", async () => {
   const v = {};
-  editorCtx.fields.forEach((f) => (v[f.key] = $(`#ed-${f.key}`).value));
+  editorCtx.fields.forEach((f) => {
+    const n = $(`#ed-${f.key}`);
+    v[f.key] = f.type === "checkbox" ? n.checked : n.value;
+  });
   const ok = await editorCtx.onSave(v);
   if (ok !== false) closeEditor();
 });
@@ -576,15 +782,51 @@ $("#restore-file").addEventListener("change", async (e) => {
   e.target.value = "";
 });
 
+// ---------- the moving bar ----------
+
+// Checked once a day, not on every mutation: the bar is allowed to move on its
+// own, but you are always told, and you can put it back.
+async function checkBar() {
+  const move = Gold.adaptTarget(days, habits, goals, settings, today);
+  if (!move) return;
+  const prev = settings;
+  settings = Gold.applyTarget(settings, move.to, today);
+  await Data.saveSettings(settings);
+  await syncTickets();
+  showBarNotice(move, prev);
+}
+
+function showBarNotice(move, prev) {
+  const up = move.dir === "up";
+  $("#bar-notice-text").innerHTML =
+    `<strong>The bar moved ${up ? "up" : "down"}: ${move.from} → ${move.to} points.</strong><br>` +
+    `You hit it ${move.hit} of the last ${move.window} days.`;
+  $("#bar-notice").classList.toggle("down", !up);
+  $("#bar-notice").hidden = false;
+  $("#bar-notice-undo").onclick = async () => {
+    settings = prev;
+    await Data.saveSettings(settings);
+    await syncTickets();
+    $("#bar-notice").hidden = true;
+    renderToday();
+  };
+}
+
 // ---------- init ----------
 
 async function reloadCaches() {
-  [habits, days, tickets, prizes, wins] = await Promise.all([
-    Data.habits.all(), Data.days.all(), Data.tickets.all(), Data.prizes.all(), Data.wins.all(),
+  [habits, goals, days, tickets, prizes, wins] = await Promise.all([
+    Data.habits.all(), Data.goals.all(), Data.days.all(),
+    Data.tickets.all(), Data.prizes.all(), Data.wins.all(),
   ]);
   settings = await Data.getSettings();
   if (!settings) {
-    settings = Gold.defaultSettings(habits);
+    settings = Gold.defaultSettings(habits, Gold.todayStr());
+    await Data.saveSettings(settings);
+  }
+  // installs from before the bar was dated
+  if (!settings.target_history) {
+    settings = Gold.applyTarget(settings, settings.daily_points_target, Gold.todayStr());
     await Data.saveSettings(settings);
   }
 }
@@ -594,6 +836,7 @@ async function reloadCaches() {
   await reloadCaches();
   today = Gold.todayStr();
   await syncTickets();
+  await checkBar();
   showView("today");
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
   document.addEventListener("visibilitychange", async () => {
@@ -601,6 +844,7 @@ async function reloadCaches() {
     if (Gold.todayStr() === today) return;
     today = Gold.todayStr();
     await syncTickets();
+    await checkBar();
     if (!$("#view-today").hidden) renderToday();
   });
 })();

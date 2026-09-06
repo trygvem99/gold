@@ -1,6 +1,7 @@
 // Gold pure logic — shared by the browser (window.Gold) and node tests.
 // Every rule of the economy lives here: points, qualifying days, streaks,
-// ticket reconciliation, weighted draw, wheel geometry. No DOM, no IndexedDB.
+// ticket reconciliation, the moving bar, weighted draw, wheel geometry.
+// No DOM, no IndexedDB.
 (function (global) {
   "use strict";
 
@@ -9,6 +10,7 @@
   const dayNum = (d) => Math.round(Date.parse(d + "T00:00:00Z") / DAY_MS);
   const daysBetween = (a, b) => dayNum(b) - dayNum(a);
   const shiftDate = (date, days) => new Date((dayNum(date) + days) * DAY_MS).toISOString().slice(0, 10);
+  const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
   // local calendar day — never toISOString(), which would shift across UTC
   function todayStr() {
@@ -18,7 +20,13 @@
   const prettyDate = (date) =>
     new Date(date + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 
-  // ---------- habits & points ----------
+  function quarterOf(date) {
+    const y = date.slice(0, 4);
+    const m = Number(date.slice(5, 7));
+    return `${y}-Q${Math.floor((m - 1) / 3) + 1}`;
+  }
+
+  // ---------- habits ----------
 
   const byOrder = (a, b) => (a.order || 0) - (b.order || 0);
   const activeHabits = (habits) => habits.filter((h) => !h.archived_at).slice().sort(byOrder);
@@ -51,34 +59,85 @@
     return s;
   }
 
-  // The threshold is an absolute number of points, but a day on which fewer
-  // points were even possible is judged against what was possible then.
+  // ---------- goals ----------
+  // kind "week": a one-off task. Worth the same as one habit completion, but
+  // only on the day it is finished — an unfinished one must not raise the bar.
+  // kind "quarter": a big goal that pays tickets outright.
+
+  const openGoals = (goals, kind) =>
+    goals.filter((g) => g.kind === kind && !g.archived_at && !g.done_at).slice().sort(byOrder);
+  const doneGoals = (goals, kind) =>
+    goals.filter((g) => g.kind === kind && !g.archived_at && g.done_at).slice().sort(byOrder);
+  const goalsDoneOn = (goals, date) =>
+    goals.filter((g) => g.kind === "week" && g.done_at && g.done_at.slice(0, 10) === date);
+  const goalTickets = (g) => Math.max(1, g.tickets || 3);
+
+  // ---------- the bar ----------
+
+  // The target is dated: past days keep the bar that applied to them, so moving
+  // it can never retroactively withdraw a ticket you already earned.
+  function targetHistory(settings) {
+    const h = (settings.target_history || []).slice().sort((a, b) => a.from.localeCompare(b.from));
+    if (h.length) return h;
+    return [{ from: "0000-01-01", target: settings.daily_points_target }];
+  }
+
+  function targetOn(settings, date) {
+    const h = targetHistory(settings);
+    let t = h[0].target;
+    for (const e of h) if (e.from <= date) t = e.target;
+    return Math.max(1, t);
+  }
+
+  // A day on which fewer points were even possible is judged against what was
+  // possible then.
   function effectiveTarget(target, maxPoints) {
     if (maxPoints <= 0) return 0;
     return Math.max(1, Math.min(target, maxPoints));
   }
 
-  function dayQualifies(day, habits, target) {
-    const act = habitsActiveOn(habits, day.date);
-    const max = maxPointsForDay(act);
-    const eff = effectiveTarget(target, max);
-    if (eff === 0) return false;
-    return pointsForDay(day.counts, act) >= eff;
+  function dayStats(day, habits, goals, settings) {
+    const date = day.date;
+    const act = habitsActiveOn(habits, date);
+    const bonus = goalsDoneOn(goals, date).length;
+    const max = maxPointsForDay(act) + bonus;
+    const points = pointsForDay(day.counts, act) + bonus;
+    const target = effectiveTarget(targetOn(settings, date), max);
+    return { date, points, max, bonus, target, qualifies: target > 0 && points >= target };
   }
+
+  const dayQualifies = (day, habits, goals, settings) => dayStats(day, habits, goals, settings).qualifies;
 
   // ---------- streaks ----------
 
+  // Every date the app knows anything about, from either source.
+  function activeDates(days, goals, today) {
+    const s = new Set();
+    for (const d of days) if (d.date <= today) s.add(d.date);
+    for (const g of goals) {
+      if (g.kind === "week" && g.done_at) {
+        const d = g.done_at.slice(0, 10);
+        if (d <= today) s.add(d);
+      }
+    }
+    return Array.from(s).sort();
+  }
+
+  const indexDays = (days) => {
+    const m = {};
+    for (const d of days) m[d.date] = d;
+    return m;
+  };
+
   // Run lengths keyed by date: for every qualifying day, how many qualifying
   // days end there consecutively. Non-qualifying days are absent.
-  function runLengths(days, habits, target) {
-    const qualifying = days
-      .filter((d) => dayQualifies(d, habits, target))
-      .map((d) => d.date)
-      .sort();
+  function runLengths(days, habits, goals, settings, today) {
+    const map = indexDays(days);
+    const dates = activeDates(days, goals, today).filter((date) =>
+      dayQualifies(map[date] || { date, counts: {} }, habits, goals, settings));
     const runs = {};
-    let prev = null;
-    let run = 0;
-    for (const date of qualifying) {
+    let prev = null, run = 0;
+    for (const date of dates) {
       run = prev !== null && daysBetween(prev, date) === 1 ? run + 1 : 1;
       runs[date] = run;
       prev = date;
@@ -88,23 +147,22 @@
 
   // The streak survives an unfinished today: it only breaks once yesterday is
   // over and unqualified.
-  function currentStreak(days, habits, target, today) {
-    const runs = runLengths(days, habits, target);
-    if (runs[today]) return runs[today];
-    const y = shiftDate(today, -1);
-    return runs[y] || 0;
+  function currentStreak(days, habits, goals, settings, today) {
+    const runs = runLengths(days, habits, goals, settings, today);
+    return runs[today] || runs[shiftDate(today, -1)] || 0;
   }
 
   // ---------- tickets ----------
 
-  // The full set of tickets the history says should exist. Compared against
-  // what does exist; the diff is applied. One daily and one streak ticket per
-  // date at most, so unchecking and rechecking cannot mint a second.
-  function ticketsOwed(days, habits, settings, today) {
-    const target = settings.daily_points_target;
+  const MANAGED = ["daily", "streak"];
+
+  // The full set of day-derived tickets the history says should exist. One
+  // daily and one streak ticket per date at most, so unchecking and rechecking
+  // cannot mint a second. Goal tickets are not derived from days and are left
+  // out of this entirely.
+  function ticketsOwed(days, habits, goals, settings, today) {
     const streakLen = Math.max(2, settings.streak_length || 7);
-    const past = days.filter((d) => d.date <= today);
-    const runs = runLengths(past, habits, target);
+    const runs = runLengths(days, habits, goals, settings, today);
     const owed = [];
     for (const date of Object.keys(runs).sort()) {
       owed.push({ date, reason: "daily" });
@@ -116,18 +174,56 @@
   const ticketKey = (t) => t.date + "|" + t.reason;
 
   // Spent tickets are never revoked: a reward already taken stays taken, and
-  // its key keeps that date from paying out twice.
+  // its key keeps that date from paying out twice. Tickets from goals are not
+  // day-derived, so they are ignored here rather than deleted as unowed.
   function reconcileTickets(existing, owed) {
-    const have = new Set(existing.map(ticketKey));
+    const managed = existing.filter((t) => MANAGED.indexOf(t.reason) !== -1);
+    const have = new Set(managed.map(ticketKey));
     const want = new Set(owed.map(ticketKey));
     const toAdd = owed.filter((t) => !have.has(ticketKey(t)));
-    const toDeleteIds = existing
-      .filter((t) => !t.spent_at && !want.has(ticketKey(t)))
-      .map((t) => t.id);
+    const toDeleteIds = managed.filter((t) => !t.spent_at && !want.has(ticketKey(t))).map((t) => t.id);
     return { toAdd, toDeleteIds };
   }
 
   const unspentTickets = (tickets) => tickets.filter((t) => !t.spent_at);
+
+  // ---------- the moving bar ----------
+
+  const ADAPT = { window: 14, up: 12, down: 5, cooldown: 7 };
+
+  // Hit it nearly every day and the bar goes up; miss it most of the time and
+  // it comes down. Bounded, one step at a time, and never more often than the
+  // cooldown, so a good or bad fortnight cannot run away with it.
+  function adaptTarget(days, habits, goals, settings, today) {
+    if (settings.adapt === false) return null;
+    const dates = activeDates(days, goals, today);
+    if (!dates.length || daysBetween(dates[0], today) < ADAPT.window) return null;
+
+    const hist = targetHistory(settings);
+    const last = hist[hist.length - 1].from;
+    if (last !== "0000-01-01" && daysBetween(last, today) < ADAPT.cooldown) return null;
+
+    const map = indexDays(days);
+    let hit = 0;
+    for (let i = 1; i <= ADAPT.window; i++) {
+      const d = shiftDate(today, -i);
+      if (dayQualifies(map[d] || { date: d, counts: {} }, habits, goals, settings)) hit++;
+    }
+
+    const cur = targetOn(settings, today);
+    const ceiling = maxPointsForDay(activeHabits(habits));
+    if (hit >= ADAPT.up && cur < ceiling) return { from: cur, to: cur + 1, hit, window: ADAPT.window, dir: "up" };
+    if (hit <= ADAPT.down && cur > 1) return { from: cur, to: cur - 1, hit, window: ADAPT.window, dir: "down" };
+    return null;
+  }
+
+  // Returns the settings object to save. Dated, so past days keep their bar.
+  function applyTarget(settings, target, today) {
+    const hist = (settings.target_history || []).filter((e) => e.from !== today);
+    hist.push({ from: today, target });
+    hist.sort((a, b) => a.from.localeCompare(b.from));
+    return Object.assign({}, settings, { daily_points_target: target, target_history: hist });
+  }
 
   // ---------- prizes ----------
 
@@ -154,7 +250,7 @@
   }
 
   // ---------- wheel geometry ----------
-  // Angles are degrees clockwise from the top (where the pointer sits).
+  // Angles are degrees clockwise from the top, where the clapper sits.
 
   function segmentAngles(prizes) {
     const total = totalWeight(prizes);
@@ -167,8 +263,8 @@
     });
   }
 
-  // Rotating the wheel by `rot` brings this local angle under the pointer.
-  const angleUnderPointer = (rot) => ((360 - (rot % 360)) % 360 + 360) % 360;
+  // Rotating the wheel by `rot` brings this local angle under the clapper.
+  const angleUnderPointer = (rot) => (((360 - (rot % 360)) % 360) + 360) % 360;
 
   function segmentAt(angles, localAngle) {
     for (let i = 0; i < angles.length; i++) {
@@ -180,11 +276,11 @@
   // Where the wheel must stop for `index` to win, and how far it has to creep
   // to get there from a near-stop just short of the segment.
   //
-  // The pointer sweeps local angles downward as the wheel turns forward, so it
+  // The clapper sweeps local angles downward as the wheel turns forward, so it
   // enters a segment across `end` and would leave across `start`. Resting
-  // `depth` in from `end` means backing off `depth + gap` puts the pointer
-  // outside the segment entirely — which is the whole trick: the wheel can be
-  // brought to a near halt one notch short and then creep across the divider.
+  // `depth` in from `end` means backing off `depth + gap` puts it outside the
+  // segment entirely — which is the trick: the wheel can be brought to a near
+  // halt one notch short and then creep across the divider.
   function landingPlan(index, angles, opts) {
     const o = opts || {};
     const rand = o.rand || Math.random;
@@ -192,17 +288,16 @@
     const seg = angles[index];
     const span = seg.end - seg.start;
     const pad = Math.min(span * 0.2, 5);
-    const frac = o.frac == null ? rand() : Math.min(1, Math.max(0, o.frac));
+    const frac = o.frac == null ? rand() : clamp(o.frac, 0, 1);
     // Rest shallow — within ~14 degrees of the leading edge — so the final
-    // creep stays a crawl instead of becoming another roll. It does mean the
-    // pointer always settles just past a divider; the odds are untouched, only
-    // where inside the winning wedge it comes to rest.
+    // creep stays a crawl instead of becoming another roll. The odds are
+    // untouched, only where inside the winning wedge it comes to rest.
     const maxDepth = Math.min(span - pad, Math.max(pad + 1, 14));
     const depth = pad + frac * Math.max(0, maxDepth - pad);
     const a = seg.end - depth;
     const gap = Math.min(6, Math.max(1.5, span * 0.12));
     return {
-      rotation: turns * 360 + ((360 - (a % 360) + 360) % 360),
+      rotation: turns * 360 + (((360 - (a % 360)) % 360) + 360) % 360,
       creep: depth + gap,
       angle: a,
     };
@@ -212,19 +307,25 @@
 
   // ---------- settings ----------
 
-  function defaultSettings(habits) {
+  function defaultSettings(habits, today) {
     const max = maxPointsForDay(activeHabits(habits));
+    const target = Math.max(1, Math.ceil(max * 0.75));
     return {
-      daily_points_target: Math.max(1, Math.ceil(max * 0.75)),
+      daily_points_target: target,
+      target_history: [{ from: today || todayStr(), target }],
       streak_length: 7,
+      adapt: true,
     };
   }
 
   const api = {
-    dayNum, daysBetween, shiftDate, todayStr, prettyDate,
+    dayNum, daysBetween, shiftDate, todayStr, prettyDate, quarterOf, clamp,
     activeHabits, habitsActiveOn, targetOf, maxPointsForDay, pointsForDay,
-    effectiveTarget, dayQualifies, runLengths, currentStreak,
-    ticketsOwed, ticketKey, reconcileTickets, unspentTickets,
+    openGoals, doneGoals, goalsDoneOn, goalTickets,
+    targetHistory, targetOn, effectiveTarget, dayStats, dayQualifies,
+    activeDates, runLengths, currentStreak,
+    ticketsOwed, ticketKey, reconcileTickets, unspentTickets, MANAGED,
+    ADAPT, adaptTarget, applyTarget,
     activePrizes, totalWeight, probabilityFor, drawPrize,
     segmentAngles, angleUnderPointer, segmentAt, landingPlan, landingRotation,
     defaultSettings,

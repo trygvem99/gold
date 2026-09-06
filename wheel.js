@@ -23,6 +23,11 @@ const Wheel = (() => {
   const PEGS = 48;
   const BULBS = 24;
   const PEG_ARC = 360 / PEGS;
+  // Two deep tones alternating, three when the count is odd so no two
+  // neighbours match. Prize identity lives in a thin accent band at the rim,
+  // not in the wedge fill — five bright hues is a toy, not a wheel.
+  const WEDGE = ["#46151F", "#14161E", "#2A1F36"];
+  const WEDGE_BLANK = "#0F1014";
 
   let host = null, stage = null;
   let prizes = [], angles = [], labelNodes = [];
@@ -60,6 +65,15 @@ const Wheel = (() => {
     cy + r * Math.sin(((deg - 90) * Math.PI) / 180),
   ];
 
+  // an arc along a ring, no spokes to the centre
+  function ringArc(cx, cy, r, a0, a1) {
+    const [x0, y0] = pointAt(cx, cy, r, a0);
+    const [x1, y1] = pointAt(cx, cy, r, a1);
+    return `M ${x0} ${y0} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1} ${y1}`;
+  }
+
+  const wedgeTone = (i, n) => (n % 2 === 1 && n > 2 ? WEDGE[i % 3] : WEDGE[i % 2]);
+
   function baseDefs() {
     const d = el("defs");
     d.innerHTML =
@@ -84,9 +98,17 @@ const Wheel = (() => {
       '<stop offset="100%" stop-color="rgba(0,0,0,0.55)"/></radialGradient>' +
       '<radialGradient id="w-hub" cx="40%" cy="32%" r="72%">' +
       '<stop offset="0%" stop-color="#33333F"/><stop offset="100%" stop-color="#07070B"/></radialGradient>' +
-      '<radialGradient id="w-bulb" cx="50%" cy="50%" r="50%">' +
-      '<stop offset="0%" stop-color="#FFFFFF"/><stop offset="35%" stop-color="#FFE9A8"/>' +
+      '<radialGradient id="w-bulb" cx="38%" cy="34%" r="66%">' +
+      '<stop offset="0%" stop-color="#FFF6DC"/><stop offset="45%" stop-color="#E2BE70"/>' +
+      '<stop offset="100%" stop-color="#6E4A0C"/></radialGradient>' +
+      '<radialGradient id="w-bulb-lit" cx="40%" cy="34%" r="66%">' +
+      '<stop offset="0%" stop-color="#FFFFFF"/><stop offset="40%" stop-color="#FFE9A8"/>' +
       '<stop offset="100%" stop-color="#E8A81F"/></radialGradient>' +
+      // the glass dome over the face
+      '<radialGradient id="w-glass" cx="50%" cy="50%" r="50%">' +
+      '<stop offset="0%" stop-color="rgba(255,255,255,0.16)"/>' +
+      '<stop offset="60%" stop-color="rgba(255,255,255,0.05)"/>' +
+      '<stop offset="100%" stop-color="rgba(255,255,255,0)"/></radialGradient>' +
       '<filter id="w-drop" x="-70%" y="-70%" width="240%" height="240%">' +
       '<feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity="0.65"/></filter>' +
       '<filter id="w-bulb-glow" x="-300%" y="-300%" width="700%" height="700%">' +
@@ -125,11 +147,12 @@ const Wheel = (() => {
     // per-wedge shading: lighter at the hub, darker at the rim, so a flat fill
     // stops looking like a chart
     prizes.forEach((p, i) => {
+      const tone = p.blank ? WEDGE_BLANK : wedgeTone(i, prizes.length);
       const g = el("radialGradient", { id: `w-seg-${i}`, cx: "50%", cy: "50%", r: "50%" });
       g.innerHTML =
-        `<stop offset="0%" stop-color="${shade(p.color, 0.30)}"/>` +
-        `<stop offset="55%" stop-color="${shade(p.color, 0.04)}"/>` +
-        `<stop offset="100%" stop-color="${shade(p.color, -0.34)}"/>`;
+        `<stop offset="0%" stop-color="${shade(tone, 0.22)}"/>` +
+        `<stop offset="52%" stop-color="${shade(tone, 0.05)}"/>` +
+        `<stop offset="100%" stop-color="${shade(tone, -0.30)}"/>`;
       defs.appendChild(g);
     });
 
@@ -145,6 +168,19 @@ const Wheel = (() => {
       const fill = `url(#w-seg-${i})`;
       if (span >= 359.9) g.appendChild(el("circle", { cx, cy, r: rSeg, fill }));
       else g.appendChild(el("path", { d: arcPath(cx, cy, rSeg, seg.start, seg.end), fill }));
+
+      // the prize's own colour, as a band at the rim rather than the whole wedge
+      if (!p.blank && span > 2) {
+        const rb = rSeg - 7;
+        if (span >= 359.9) {
+          g.appendChild(el("circle", { cx, cy, r: rb, fill: "none", stroke: p.color, "stroke-width": 6, opacity: 0.95 }));
+        } else {
+          g.appendChild(el("path", {
+            d: ringArc(cx, cy, rb, seg.start + 0.6, seg.end - 0.6),
+            fill: "none", stroke: p.color, "stroke-width": 6, opacity: 0.95,
+          }));
+        }
+      }
       disc.appendChild(g);
 
       if (span >= 13 && p.name) {
@@ -154,6 +190,7 @@ const Wheel = (() => {
           y: cy, "text-anchor": "middle", "dominant-baseline": "central", class: "wheel-label",
         });
         t.textContent = p.name.length > 15 ? p.name.slice(0, 14) + "…" : p.name;
+        if (p.blank) t.setAttribute("class", "wheel-label blank");
         g2.appendChild(t);
         labels.appendChild(g2);
         labelNodes.push({ g: g2, text: t, mid: seg.mid, rText, cx, cy, flip: null });
@@ -164,6 +201,7 @@ const Wheel = (() => {
       angles.forEach((seg) => {
         const [x, y] = pointAt(cx, cy, rSeg, seg.start);
         disc.appendChild(el("line", { x1: cx, y1: cy, x2: x, y2: y, class: "wheel-divider" }));
+        disc.appendChild(el("line", { x1: cx, y1: cy, x2: x, y2: y, class: "wheel-divider-hi" }));
       });
     }
     disc.appendChild(labels);
@@ -186,30 +224,69 @@ const Wheel = (() => {
     }
     svg.appendChild(pegLayer);
 
-    // ---- rim ----
-    svg.appendChild(el("circle", { cx, cy, r: rSeg + 2.5, fill: "none", stroke: "rgba(0,0,0,0.7)", "stroke-width": 5 }));
-    svg.appendChild(el("circle", { cx, cy, r: rimMid, fill: "none", stroke: "url(#w-metal)", "stroke-width": 20 }));
-    svg.appendChild(el("circle", { cx, cy, r: rimMid + 9.4, fill: "none", stroke: "rgba(255,255,255,0.32)", "stroke-width": 1 }));
-    svg.appendChild(el("circle", { cx, cy, r: rimMid - 9.4, fill: "none", stroke: "rgba(255,255,255,0.2)", "stroke-width": 1 }));
+    // ---- rim: a machined band, not a glossy donut ----
+    svg.appendChild(el("circle", { cx, cy, r: rSeg + 2, fill: "none", stroke: "rgba(0,0,0,0.75)", "stroke-width": 5 }));
+    svg.appendChild(el("circle", { cx, cy, r: rimMid, fill: "none", stroke: "url(#w-metal)", "stroke-width": 19 }));
 
-    // ---- marquee bulbs, fixed to the rim ----
+    // brushed finish: fine radial hairlines across the band
+    const brush = el("g", { class: "rim-brush" });
+    for (let i = 0; i < 200; i++) {
+      const a = (i * 360) / 200;
+      const [x0, y0] = pointAt(cx, cy, rimMid - 9, a);
+      const [x1, y1] = pointAt(cx, cy, rimMid + 9, a);
+      const light = i % 2 === 0;
+      brush.appendChild(el("line", {
+        x1: x0, y1: y0, x2: x1, y2: y1,
+        stroke: light ? "rgba(255,246,224,0.10)" : "rgba(0,0,0,0.14)",
+        "stroke-width": 0.8,
+      }));
+    }
+    svg.appendChild(brush);
+
+    // engraved edges, and a bezel that mounts the whole thing
+    svg.appendChild(el("circle", { cx, cy, r: rimMid + 9.5, fill: "none", stroke: "rgba(255,246,224,0.34)", "stroke-width": 1 }));
+    svg.appendChild(el("circle", { cx, cy, r: rimMid - 9.5, fill: "none", stroke: "rgba(0,0,0,0.5)", "stroke-width": 1.2 }));
+    svg.appendChild(el("circle", { cx, cy, r: rimMid + 11, fill: "none", stroke: "rgba(0,0,0,0.6)", "stroke-width": 2.5 }));
+    svg.appendChild(el("circle", { cx, cy, r: rimMid + 12.4, fill: "none", stroke: "rgba(212,175,102,0.28)", "stroke-width": 1 }));
+
+    // ---- brass rivets, fixed to the rim; they only light while it runs ----
     bulbGroup = el("g", { class: "bulbs" });
     for (let i = 0; i < BULBS; i++) {
       const [bx, by] = pointAt(cx, cy, rimMid, (i * 360) / BULBS);
-      const glow = el("circle", { cx: bx, cy: by, r: 3.6, fill: "#FFD97A", filter: "url(#w-bulb-glow)", class: "bulb-glow" });
-      const b = el("circle", { cx: bx, cy: by, r: 2.6, fill: "url(#w-bulb)", class: "bulb" });
+      const glow = el("circle", { cx: bx, cy: by, r: 4.2, fill: "#FFD97A", filter: "url(#w-bulb-glow)", class: "bulb-glow" });
+      const b = el("circle", { cx: bx, cy: by, r: 2.1, fill: "url(#w-bulb)", class: "bulb" });
       bulbGroup.appendChild(glow);
       bulbGroup.appendChild(b);
       bulbNodes.push({ glow, bulb: b });
     }
     svg.appendChild(bulbGroup);
 
-    // ---- hub ----
+    // ---- glass: one fixed highlight across the face, and a bright top arc ----
+    const glass = el("g", { class: "wheel-glass", "pointer-events": "none" });
+    glass.appendChild(el("ellipse", {
+      cx: cx - rSeg * 0.22, cy: cy - rSeg * 0.34,
+      rx: rSeg * 0.62, ry: rSeg * 0.40,
+      fill: "url(#w-glass)", transform: `rotate(-28 ${cx - rSeg * 0.22} ${cy - rSeg * 0.34})`,
+    }));
+    glass.appendChild(el("path", {
+      d: ringArc(cx, cy, rSeg - 1.5, 292, 68),
+      fill: "none", stroke: "rgba(255,255,255,0.20)", "stroke-width": 1.6, "stroke-linecap": "round",
+    }));
+    svg.appendChild(glass);
+
+    // ---- hub: machined, with a knurled collar ----
     const hub = el("g", { filter: "url(#w-drop)" });
-    hub.appendChild(el("circle", { cx, cy, r: rSeg * 0.23, fill: "url(#w-metal-v)" }));
-    hub.appendChild(el("circle", { cx, cy, r: rSeg * 0.175, fill: "url(#w-hub)" }));
-    hub.appendChild(el("circle", { cx, cy, r: rSeg * 0.175, fill: "none", stroke: "rgba(0,0,0,0.65)", "stroke-width": 1 }));
-    hub.appendChild(el("circle", { cx, cy, r: rSeg * 0.058, fill: "url(#w-metal-v)" }));
+    hub.appendChild(el("circle", { cx, cy, r: rSeg * 0.215, fill: "url(#w-metal-v)" }));
+    for (let i = 0; i < 36; i++) {
+      const a = (i * 360) / 36;
+      const [x0, y0] = pointAt(cx, cy, rSeg * 0.185, a);
+      const [x1, y1] = pointAt(cx, cy, rSeg * 0.215, a);
+      hub.appendChild(el("line", { x1: x0, y1: y0, x2: x1, y2: y1, stroke: "rgba(0,0,0,0.32)", "stroke-width": 0.9 }));
+    }
+    hub.appendChild(el("circle", { cx, cy, r: rSeg * 0.165, fill: "url(#w-hub)" }));
+    hub.appendChild(el("circle", { cx, cy, r: rSeg * 0.165, fill: "none", stroke: "rgba(0,0,0,0.7)", "stroke-width": 1 }));
+    hub.appendChild(el("circle", { cx, cy, r: rSeg * 0.11, fill: "none", stroke: "rgba(212,175,102,0.35)", "stroke-width": 0.8 }));
+    hub.appendChild(el("circle", { cx, cy, r: rSeg * 0.05, fill: "url(#w-metal-v)" }));
     svg.appendChild(hub);
 
     box.appendChild(svg);
@@ -275,16 +352,22 @@ const Wheel = (() => {
     orientLabels(deg);
   }
 
-  // Classic marquee chase: every third bulb lit, the pattern walking round.
-  // `phase === null` lights them all — how the wheel sits when nothing is
-  // happening. Unlit bulbs get a dark amber fill rather than low opacity,
-  // which over a gold rim would just read as grey grime.
+  // At rest these are just brass rivets. `phase === null` is that resting
+  // state; a number runs a marquee chase, every third one lit, the pattern
+  // walking round. Light is something the wheel earns by moving.
   function setBulbs(phase, heat) {
-    const step = phase === null ? null : Math.floor(phase);
+    if (phase === null) {
+      for (const n of bulbNodes) {
+        n.bulb.setAttribute("fill", "url(#w-bulb)");
+        n.glow.style.opacity = "0.05";
+      }
+      return;
+    }
+    const step = Math.floor(phase);
     for (let i = 0; i < bulbNodes.length; i++) {
-      const on = step === null || (i + step) % 3 === 0;
-      bulbNodes[i].bulb.setAttribute("fill", on ? "url(#w-bulb)" : "#8A6318");
-      bulbNodes[i].glow.style.opacity = String(on ? 0.4 + heat * 0.6 : 0.03);
+      const on = (i + step) % 3 === 0;
+      bulbNodes[i].bulb.setAttribute("fill", on ? "url(#w-bulb-lit)" : "url(#w-bulb)");
+      bulbNodes[i].glow.style.opacity = String(on ? 0.35 + heat * 0.65 : 0.04);
     }
   }
 
@@ -313,7 +396,8 @@ const Wheel = (() => {
     return d / total;
   }
 
-  function spin(index, onDone) {
+  function spin(index, onDone, opts) {
+    const blank = !!(opts && opts.blank);
     if (spinning || !disc) return;
     spinning = true;
     dim(null);
@@ -433,18 +517,25 @@ const Wheel = (() => {
       else finish(onDone);
     }
 
+    // A blank gets no light and no fanfare. The absence is the point.
     function land(i) {
       landed = true;
       flapper.setAttribute("transform", "rotate(0 20 9)");
       disc.style.filter = "none";
       dim(i);
       Sfx.whooshStop();
-      Sfx.win();
-      pulse(".shock", "go");
-      pulse(".rays", "go");
-      if (bulbGroup) bulbGroup.classList.add("strobe");
-      shake = 14;
-      vibrate([0, 60, 55, 60, 55, 170]);
+      if (blank) {
+        Sfx.blank();
+        shake = 5;
+        vibrate([0, 30, 90, 30]);
+      } else {
+        Sfx.win();
+        pulse(".shock", "go");
+        pulse(".rays", "go");
+        if (bulbGroup) bulbGroup.classList.add("strobe");
+        shake = 14;
+        vibrate([0, 60, 55, 60, 55, 170]);
+      }
     }
 
     function finish(cb) {

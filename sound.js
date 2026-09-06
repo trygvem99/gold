@@ -143,6 +143,14 @@ const Sfx = (() => {
     src.stop(t + 1.3);
   }
 
+  // Landed on a blank: a short fall, then nothing.
+  function blank() {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime;
+    tone(392, t, 0.20, 0.35, "triangle", 311.13);
+    tone(196, t + 0.14, 0.22, 0.55, "sine", 155.56);
+  }
+
   function earned(streak) {
     const c = ac(); if (!c) return;
     const t = c.currentTime;
@@ -174,7 +182,7 @@ const Sfx = (() => {
 
   return {
     unlock: ac, peg, whooshStart, whooshSet, whooshStop,
-    tension, clunk, win, earned, blip, thunk,
+    tension, clunk, win, blank, earned, blip, thunk,
     setMuted, isMuted: () => muted,
   };
 })();

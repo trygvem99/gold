@@ -1,18 +1,20 @@
 /* Gold — dark ground, gold reserved for earned state. */
 
+/* Warm near-black, two neutrals, gold as an accent — not a flood. */
 :root {
-  --bg: #0B0B0F;
-  --card: #15151E;
-  --card-2: #1C1C27;
-  --line: #262633;
-  --text: #F2EDE3;
-  --dim: #8A8598;
-  --gold: #E8B94A;
-  --gold-hi: #FFD97A;
-  --gold-dark: #A87B1F;
-  --flame: #FF7A45;
-  --win: #7CE38B;
-  --danger: #F87171;
+  --bg: #0A0A0C;
+  --card: #131318;
+  --card-2: #191922;
+  --line: #24242E;
+  --text: #EDE7DA;
+  --dim: #837E8E;
+  --gold: #C9A44C;
+  --gold-hi: #E8D093;
+  --gold-dark: #6E5418;
+  --brass: #8A6A28;
+  --flame: #D4703E;
+  --win: #6FB98A;
+  --danger: #C86A6A;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
@@ -227,9 +229,11 @@ input.switch:checked::after { transform: translateX(20px); background: linear-gr
   transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.3s, background 0.3s;
 }
 .habit:active { transform: scale(0.985); }
+/* done is marked by a gold edge and lit pips, not by flooding the row */
 .habit.done {
-  border-color: rgba(232, 185, 74, 0.42);
-  background: linear-gradient(180deg, rgba(232, 185, 74, 0.13), rgba(232, 185, 74, 0.04));
+  border-color: rgba(201, 164, 76, 0.3);
+  background: linear-gradient(180deg, rgba(201, 164, 76, 0.055), rgba(201, 164, 76, 0.015));
+  box-shadow: inset 3px 0 0 var(--gold);
 }
 .habit .sweep {
   position: absolute;
@@ -244,7 +248,7 @@ input.switch:checked::after { transform: translateX(20px); background: linear-gr
 .habit-emoji { font-size: 22px; width: 30px; text-align: center; flex: 0 0 auto; }
 .habit-main { flex: 1; min-width: 0; }
 .habit-name { font-size: 15px; }
-.habit.done .habit-name { color: var(--gold-hi); }
+.habit.done .habit-name { color: var(--text); }
 .habit-meta { font-size: 12px; color: var(--dim); margin-top: 2px; }
 
 .pips { display: flex; gap: 5px; flex: 0 0 auto; }
@@ -277,6 +281,43 @@ input.switch:checked::after { transform: translateX(20px); background: linear-gr
 .minus:active { transform: scale(0.9); }
 
 .empty { color: var(--dim); text-align: center; padding: 26px 10px; font-size: 14px; }
+
+/* goals sit in the same rows as habits, marked by their edge */
+.habit.goal { box-shadow: inset 3px 0 0 rgba(131, 126, 142, 0.5); }
+.habit.goal.big { box-shadow: inset 3px 0 0 var(--brass); }
+.habit.goal.big .habit-meta { color: var(--gold); }
+.habit.goal.done { box-shadow: inset 3px 0 0 var(--gold); }
+.row.struck .row-name { text-decoration: line-through; color: var(--dim); }
+
+/* the bar moved on its own; say so, and offer it back */
+.notice {
+  display: flex; align-items: center; gap: 12px;
+  border: 1px solid rgba(201, 164, 76, 0.35);
+  background: linear-gradient(180deg, rgba(201, 164, 76, 0.09), rgba(201, 164, 76, 0.02));
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.notice strong { color: var(--gold-hi); font-weight: 600; }
+.notice.down { border-color: rgba(131, 126, 142, 0.35); background: rgba(255, 255, 255, 0.03); }
+.notice.down strong { color: var(--text); }
+.notice button { flex: 0 0 auto; }
+
+.field.row-field { display: flex; align-items: center; justify-content: space-between; }
+.field.row-field span { margin-bottom: 0; }
+
+/* a blank is the absence of a prize; it should look like one */
+.win-card.blank { opacity: 0.85; }
+.win-card.blank .win-emoji { color: var(--dim); font-size: 44px; }
+.win-card.blank .win-name { color: var(--dim); font-weight: 500; }
+#win-overlay.blank .win-kicker { color: var(--dim); letter-spacing: 0.18em; }
+
+.ticket.goal {
+  background: linear-gradient(115deg, #4A3A6B 0%, #8C7BC4 16%, #E4DCFF 36%, #8C7BC4 54%, #5B4A8C 74%, #D6CCF5 100%);
+  box-shadow: 0 20px 50px rgba(140, 123, 196, 0.28);
+}
 
 /* ---------- wheel ---------- */
 
@@ -388,16 +429,19 @@ body.spinning .spin-btn { opacity: 0; transform: scale(0.96); pointer-events: no
 }
 .wheel-disc { will-change: transform; }
 .wheel-label {
-  font: 600 11px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
-  letter-spacing: 0.08em;
+  font: 600 10.5px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  fill: #FFF6E0;
+  fill: #EDE3D0;
   paint-order: stroke;
-  stroke: rgba(0, 0, 0, 0.55);
+  stroke: rgba(0, 0, 0, 0.6);
   stroke-width: 2.6px;
   stroke-linejoin: round;
 }
-.wheel-divider { stroke: rgba(255, 240, 196, 0.3); stroke-width: 1.1; }
+.wheel-label.blank { fill: #6C6A72; letter-spacing: 0.2em; }
+/* engraved: a dark score with a gold hairline riding on it */
+.wheel-divider { stroke: rgba(0, 0, 0, 0.55); stroke-width: 2.2; }
+.wheel-divider-hi { stroke: rgba(212, 175, 102, 0.42); stroke-width: 0.8; }
 .wheel-pointer { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); }
 
 .spin-btn {
@@ -411,16 +455,17 @@ body.spinning .spin-btn { opacity: 0; transform: scale(0.96); pointer-events: no
   letter-spacing: 0.1em;
   text-transform: uppercase;
   border-radius: 15px;
-  background: linear-gradient(178deg, #FFF0C4 0%, #E8B94A 42%, #C9962E 62%, #A87B1F 100%);
-  border: 1px solid rgba(255, 244, 214, 0.85);
-  color: #201703;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.75),
-    inset 0 -2px 6px rgba(120, 84, 12, 0.45),
-    0 10px 30px rgba(232, 185, 74, 0.26);
+  /* matte brass with a hairline, not a glossy slab */
+  background: linear-gradient(178deg, #2A2417 0%, #191509 100%);
+  border: 1px solid rgba(201, 164, 76, 0.55);
+  color: var(--gold-hi);
+  box-shadow: inset 0 1px 0 rgba(232, 208, 147, 0.14), 0 8px 26px rgba(0, 0, 0, 0.5);
 }
-.spin-btn:active { transform: scale(0.985); box-shadow: inset 0 2px 8px rgba(120, 84, 12, 0.5); }
+.spin-btn:active {
+  transform: scale(0.985);
+  background: linear-gradient(178deg, #C9A44C 0%, #8A6A28 100%);
+  color: #17130A;
+}
 .spin-btn:disabled {
   background: var(--card-2); border-color: var(--line); color: var(--dim);
   text-shadow: none; box-shadow: none;

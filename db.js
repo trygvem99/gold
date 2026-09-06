@@ -5,7 +5,7 @@
 
 const DB = (() => {
   const NAME = "gold";
-  const VERSION = 1;
+  const VERSION = 2;
   let _db = null;
 
   // Guarded from version 1 so that bumping VERSION later and appending a store
@@ -17,6 +17,7 @@ const DB = (() => {
       (indexes || []).forEach(([n, path]) => s.createIndex(n, path));
     };
     ensure("habits", { keyPath: "id" });
+    ensure("goals", { keyPath: "id" });   // added in v2: one-off and quarterly
     ensure("days", { keyPath: "date" });
     ensure("tickets", { keyPath: "id" }, [["date", "date"]]);
     ensure("prizes", { keyPath: "id" });
@@ -55,8 +56,8 @@ const DB = (() => {
 })();
 
 const Data = (() => {
-  const STORES = ["habits", "days", "tickets", "prizes", "wins", "settings"];
-  const FORMAT = 1;
+  const STORES = ["habits", "goals", "days", "tickets", "prizes", "wins", "settings"];
+  const FORMAT = 2;
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   async function init() {
@@ -77,7 +78,7 @@ const Data = (() => {
         })));
         await DB.bulkPut("prizes", (seed.prizes || []).map((p, i) => ({
           id: newId(), name: p.name, emoji: p.emoji, color: p.color,
-          weight: p.weight, order: i, archived_at: null,
+          weight: p.weight, blank: !!p.blank, order: i, archived_at: null,
         })));
       }
     } catch (e) {
@@ -141,6 +142,11 @@ const Data = (() => {
       all: () => DB.getAll("habits"),
       put: (h) => DB.put("habits", h),
       del: (id) => DB.del("habits", id),
+    },
+    goals: {
+      all: () => DB.getAll("goals"),
+      put: (g) => DB.put("goals", g),
+      del: (id) => DB.del("goals", id),
     },
     days: {
       all: () => DB.getAll("days"),
