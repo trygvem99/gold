@@ -305,6 +305,85 @@
 
   const landingRotation = (index, angles, opts) => landingPlan(index, angles, opts).rotation;
 
+  // ---------- icons ----------
+
+  // Guess an icon from what the thing is called, so nobody has to go hunting
+  // through an emoji keyboard. English and Norwegian, longest match wins.
+  //
+  // Single distinctive words only. Matching is by prefix, so "run" catches
+  // "running" — which is why a common word like "out" or "the" must never
+  // appear here, or "Dinner out" picks up the bedtime icon.
+  const ICON_WORDS = [
+    ["🏃", "run løp løping jog jogging springe marathon maraton"],
+    ["🏋️", "gym train trening styrke lift løft workout"],
+    ["🚶", "walk walking tur turgåing steps skritt"],
+    ["🚴", "bike bicycle sykkel sykle cycling"],
+    ["🏊", "swim swimming svøm svømme basseng"],
+    ["🧘", "meditate meditation meditasjon meditere yoga mindfulness pust breathe"],
+    ["📖", "read reading les lese lesing book bok kapittel chapter"],
+    ["✍️", "write writing skriv skrive journal dagbok blogg"],
+    ["🎓", "study studere lære learn course kurs exam eksamen skole"],
+    ["💻", "code coding kode program prosjekt project"],
+    ["💼", "work jobb career karriere meeting"],
+    ["💰", "money penger budget budsjett sparing savings"],
+    ["📈", "invest aksjer stocks portfolio portefølje"],
+    ["🧹", "clean cleaning rydde vaske tidy husarbeid"],
+    ["🍳", "cook cooking matlaging"],
+    ["🥗", "salad salat grønnsaker vegetables greens"],
+    ["🥩", "protein kjøtt"],
+    ["💧", "water vann hydrate drikke"],
+    ["🌙", "sleep sove seng sengetid bedtime lights"],
+    ["🚫", "sugar sukker candy godteri snacks junk"],
+    ["🍷", "alcohol alkohol wine beer øl"],
+    ["🚭", "smoke smoking røyk snus"],
+    ["🦷", "dentist tannlege tenner teeth"],
+    ["🩺", "doctor lege health helse checkup legetime"],
+    ["📞", "call ringe phone telefon"],
+    ["📧", "email inbox innboks"],
+    ["🌱", "garden hage plante plant"],
+    ["🎸", "music musikk guitar gitar piano"],
+    ["🗣️", "language språk spanish spansk french fransk german tysk"],
+    ["📷", "photo foto camera kamera"],
+    ["✈️", "travel reise flight holiday ferie"],
+    ["🚗", "car bil kjøre drive"],
+    ["🏠", "house home hjem leilighet"],
+    ["🐕", "dog hund puppy valp"],
+    ["👨‍👩‍👧", "family familie kids barn"],
+    ["🤝", "friend friends venn venner social sosialt"],
+    ["🎬", "film movie cinema kino serie series"],
+    ["🎮", "game gaming spill"],
+    ["☕", "coffee kaffe"],
+    ["🍽️", "dinner middag lunch lunsj restaurant"],
+    ["🚿", "shower dusj"],
+    ["⚖️", "weight vekt weigh veie"],
+    ["🤸", "stretch stretching tøye mobility"],
+    ["🗓️", "plan planlegg schedule kalender"],
+    ["🛒", "shop shopping groceries handling"],
+    ["🙏", "pray prayer church kirke gratitude takknemlig"],
+    ["🏅", "compete konkurranse race vinne"],
+    ["🧾", "admin taxes skatt bills regninger papirer"],
+  ];
+  const FALLBACK = ["🎯", "✅", "⭐", "🔥", "💪", "📌"];
+
+  function suggestIcons(name, limit) {
+    const text = " " + String(name || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ") + " ";
+    const scored = [];
+    for (const [icon, words] of ICON_WORDS) {
+      let best = 0;
+      for (const w of words.split(" ")) {
+        // short words match far too much by prefix; the table has none, and
+        // this keeps it that way
+        if (w.length >= 3 && text.indexOf(" " + w) !== -1) best = Math.max(best, w.length);
+      }
+      if (best) scored.push({ icon, best });
+    }
+    scored.sort((a, b) => b.best - a.best);
+    const out = [];
+    for (const s of scored) if (out.indexOf(s.icon) === -1) out.push(s.icon);
+    for (const f of FALLBACK) if (out.indexOf(f) === -1) out.push(f);
+    return out.slice(0, limit || 6);
+  }
+
   // ---------- settings ----------
 
   function defaultSettings(habits, today) {
@@ -328,7 +407,7 @@
     ADAPT, adaptTarget, applyTarget,
     activePrizes, totalWeight, probabilityFor, drawPrize,
     segmentAngles, angleUnderPointer, segmentAt, landingPlan, landingRotation,
-    defaultSettings,
+    suggestIcons, defaultSettings,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.Gold = api;

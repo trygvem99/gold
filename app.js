@@ -513,7 +513,7 @@ function editHabit(h) {
     title: isNew ? "New habit" : "Edit habit",
     fields: [
       { key: "name", label: "Name", type: "text", value: habit.name },
-      { key: "emoji", label: "Emoji", type: "text", value: habit.emoji },
+      { key: "emoji", label: "Icon", type: "icon", value: habit.emoji, autoFollow: isNew },
       { key: "target", label: "Times per day", type: "number", value: Gold.targetOf(habit), min: 1 },
     ],
     canDelete: !isNew,
@@ -581,7 +581,7 @@ function editGoal(kind, g) {
   };
   const fields = [
     { key: "name", label: "Name", type: "text", value: goal.name },
-    { key: "emoji", label: "Emoji", type: "text", value: goal.emoji },
+    { key: "emoji", label: "Icon", type: "icon", value: goal.emoji, autoFollow: isNew },
   ];
   if (kind === "quarter") {
     fields.push({ key: "tickets", label: "Spins it pays", type: "number", value: Gold.goalTickets(goal), min: 1 });
@@ -687,7 +687,7 @@ function editPrize(p) {
     title: isNew ? "New prize" : "Edit prize",
     fields: [
       { key: "name", label: "Name", type: "text", value: prize.name },
-      { key: "emoji", label: "Emoji", type: "text", value: prize.emoji },
+      { key: "emoji", label: "Icon", type: "icon", value: prize.emoji, autoFollow: isNew },
       { key: "color", label: "Colour", type: "color", value: prize.color },
       { key: "weight", label: "Weight (higher = more likely)", type: "number", value: prize.weight, min: 0 },
       { key: "blank", label: "Wins nothing", type: "checkbox", value: !!prize.blank },
@@ -728,13 +728,48 @@ function openEditor(ctx) {
     f.type === "checkbox"
       ? `<label class="field row-field"><span>${esc(f.label)}</span>` +
         `<input id="ed-${f.key}" type="checkbox" class="switch"${f.value ? " checked" : ""} /></label>`
-      : `<label class="field"><span>${esc(f.label)}</span>` +
-        `<input id="ed-${f.key}" type="${f.type}" value="${esc(f.value)}"` +
-        (f.min != null ? ` min="${f.min}"` : "") +
-        (f.type === "number" ? ' step="1" inputmode="numeric"' : "") + " /></label>"
+      : f.type === "icon"
+        ? `<div class="field"><span>${esc(f.label)}</span>` +
+          `<div class="icon-row" id="ed-${f.key}-row"></div>` +
+          `<input id="ed-${f.key}" type="text" value="${esc(f.value)}" class="icon-custom" placeholder="or type one" /></div>`
+        : `<label class="field"><span>${esc(f.label)}</span>` +
+          `<input id="ed-${f.key}" type="${f.type}" value="${esc(f.value)}"` +
+          (f.min != null ? ` min="${f.min}"` : "") +
+          (f.type === "number" ? ' step="1" inputmode="numeric"' : "") + " /></label>"
   ).join("");
+  wireIconPickers(ctx);
   $("#editor-delete").hidden = !ctx.canDelete;
   $("#editor-modal").hidden = false;
+}
+
+// The icon follows what you type in the name field until you overrule it, so
+// most of the time you never touch it at all.
+function wireIconPickers(ctx) {
+  for (const f of ctx.fields) {
+    if (f.type !== "icon") continue;
+    const input = $(`#ed-${f.key}`);
+    const row = $(`#ed-${f.key}-row`);
+    const nameInput = $(`#ed-${f.from || "name"}`);
+    let chosen = !!f.value && !f.autoFollow;
+
+    const paint = () => {
+      const picks = Gold.suggestIcons(nameInput ? nameInput.value : "", 6);
+      if (!chosen && picks.length) input.value = picks[0];
+      row.innerHTML = picks
+        .map((e) => `<button type="button" class="icon-chip${e === input.value ? " on" : ""}">${esc(e)}</button>`)
+        .join("");
+      row.querySelectorAll(".icon-chip").forEach((b) => b.addEventListener("click", () => {
+        chosen = true;
+        input.value = b.textContent;
+        paint();
+        Sfx.blip(0.5);
+      }));
+    };
+
+    if (nameInput) nameInput.addEventListener("input", paint);
+    input.addEventListener("input", () => { chosen = true; paint(); });
+    paint();
+  }
 }
 
 function closeEditor() {

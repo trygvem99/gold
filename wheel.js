@@ -74,6 +74,70 @@ const Wheel = (() => {
 
   const wedgeTone = (i, n) => (n % 2 === 1 && n > 2 ? WEDGE[i % 3] : WEDGE[i % 2]);
 
+  // break a name into n roughly even lines, never mid-word
+  function splitInto(name, n) {
+    const words = String(name).trim().split(/\s+/);
+    if (n === 1 || words.length < n) return n === 1 ? [name] : null;
+    const budget = name.length / n;
+    const lines = [];
+    let cur = [];
+    for (const w of words) {
+      cur.push(w);
+      if (lines.length < n - 1 && cur.join(" ").length >= budget) { lines.push(cur.join(" ")); cur = []; }
+    }
+    if (cur.length) lines.push(cur.join(" "));
+    return lines.length === n ? lines : null;
+  }
+
+  function setSpans(l, lines) {
+    while (l.text.firstChild) l.text.removeChild(l.text.firstChild);
+    l.spans = lines.map((txt) => {
+      const s = el("tspan", {});
+      s.textContent = txt;
+      l.text.appendChild(s);
+      return s;
+    });
+  }
+
+  // Measured once the SVG is in the document. The label runs radially, so its
+  // length budget is the band between hub and pegs, and its thickness budget is
+  // how wide the wedge is at the label's inner end — which is why a long name
+  // on a narrow wedge has to be pushed outward as well as shrunk. Try one, two
+  // and three lines and keep whichever affords the largest type.
+  function fitLabels(base) {
+    const MIN = 5.5;
+    for (const l of labelNodes) {
+      const half = ((l.span / 2) * Math.PI) / 180;
+      let best = null;
+      for (let n = 1; n <= 3; n++) {
+        const lines = splitInto(l.name, n);
+        if (!lines) continue;
+        setSpans(l, lines);
+        let longest = 0;
+        for (const s of l.spans) longest = Math.max(longest, s.getComputedTextLength());
+        if (!longest) continue;
+        for (let size = base; size >= MIN; size -= 0.25) {
+          const len = longest * (size / base);
+          const rInner = l.rOut - len;
+          if (rInner < l.rHub) continue;
+          if (2 * rInner * Math.sin(half) < n * size * 1.15) continue;
+          if (!best || size > best.size) best = { size, lines, len };
+          break;
+        }
+      }
+      if (!best) { l.g.style.display = "none"; continue; }
+      l.g.style.display = "";
+      setSpans(l, best.lines);
+      l.text.style.fontSize = best.size.toFixed(2) + "px";
+      l.rText = l.rOut - best.len / 2;
+      const lh = best.size * 1.15;
+      l.spans.forEach((s, i) => {
+        s.setAttribute("y", (l.cy + (i - (best.lines.length - 1) / 2) * lh).toFixed(2));
+      });
+      l.flip = null; // rText moved, so the position has to be rewritten
+    }
+  }
+
   function baseDefs() {
     const d = el("defs");
     d.innerHTML =
@@ -183,17 +247,24 @@ const Wheel = (() => {
       }
       disc.appendChild(g);
 
-      if (span >= 13 && p.name) {
-        const rText = rSeg * 0.60;
+      if (span >= 8 && p.name) {
+        // The label runs radially, so its room is the band between the hub and
+        // the peg ring. Long names wrap to two lines when the wedge is wide
+        // enough to take them, and whatever is left over is scaled down to fit
+        // in fitLabels() — nothing gets cut off.
         const g2 = el("g");
         const t = el("text", {
-          y: cy, "text-anchor": "middle", "dominant-baseline": "central", class: "wheel-label",
+          "text-anchor": "middle", "dominant-baseline": "central",
+          class: "wheel-label" + (p.blank ? " blank" : ""),
         });
-        t.textContent = p.name.length > 15 ? p.name.slice(0, 14) + "…" : p.name;
-        if (p.blank) t.setAttribute("class", "wheel-label blank");
         g2.appendChild(t);
         labels.appendChild(g2);
-        labelNodes.push({ g: g2, text: t, mid: seg.mid, rText, cx, cy, flip: null });
+        const node = {
+          g: g2, text: t, spans: [], name: p.name, span,
+          mid: seg.mid, cx, cy, rHub: rSeg * 0.26, rOut: rSeg - 11, rText: rSeg * 0.6, flip: null,
+        };
+        setSpans(node, [p.name]);
+        labelNodes.push(node);
       }
     });
 
@@ -322,6 +393,7 @@ const Wheel = (() => {
     setVar("--shx", "0px");
     setVar("--shy", "0px");
     setBulbs(null, 0);
+    fitLabels(10.5);
     apply(0);
   }
 
@@ -337,7 +409,10 @@ const Wheel = (() => {
       if (l.flip === flip) continue;
       l.flip = flip;
       l.g.setAttribute("transform", `rotate(${l.mid - 90 + (flip ? 180 : 0)} ${l.cx} ${l.cy})`);
-      l.text.setAttribute("x", flip ? l.cx - l.rText : l.cx + l.rText);
+      // a tspan with no x of its own continues from the previous one, so every
+      // line has to be positioned explicitly
+      const x = flip ? l.cx - l.rText : l.cx + l.rText;
+      l.spans.forEach((s) => s.setAttribute("x", x));
     }
   }
 

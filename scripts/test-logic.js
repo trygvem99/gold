@@ -234,6 +234,26 @@ const one = [{ id: "only", weight: 5 }];
 assert.strictEqual(G.drawPrize(one).index, 0);
 assert.strictEqual(G.segmentAngles(one)[0].end, 360);
 
+// ---------- icon suggestions ----------
+assert.strictEqual(G.suggestIcons("Run a half marathon")[0], "🏃");
+assert.strictEqual(G.suggestIcons("Read 30 min")[0], "📖");
+assert.strictEqual(G.suggestIcons("Book the dentist")[0], "🦷");
+assert.strictEqual(G.suggestIcons("Lights out by 23:00")[0], "🌙");
+assert.strictEqual(G.suggestIcons("Ingen sukker")[0], "🚫", "Norwegian too");
+// common words must never be keywords, or every name matches something wrong
+assert.ok(G.suggestIcons("Dinner out").indexOf("🌙") === -1, "'out' must not reach the bedtime icon");
+assert.strictEqual(G.suggestIcons("Dinner out")[0], "🍽️");
+assert.ok(G.suggestIcons("Book the dentist").indexOf("🐕") === -1, "'the' must not reach the dog icon");
+assert.ok(G.suggestIcons("Walk the dog").indexOf("🐕") !== -1);
+assert.strictEqual(G.suggestIcons("Cheat meal")[0], "🎯", "no keyword, so a neutral default");
+assert.strictEqual(G.suggestIcons("Sykle til jobb")[0], "🚴");
+assert.strictEqual(G.suggestIcons("")[0], "🎯", "an unnamed thing still gets something usable");
+assert.strictEqual(G.suggestIcons("qwertyuiop")[0], "🎯");
+assert.strictEqual(G.suggestIcons("Run", 4).length, 4);
+assert.strictEqual(new Set(G.suggestIcons("Walk the dog")).size, 6, "no duplicates");
+// a longer keyword match beats a shorter one inside the same name
+assert.strictEqual(G.suggestIcons("marathon")[0], "🏃");
+
 // ---------- defaults ----------
 const def = G.defaultSettings(three, "2026-09-06");
 assert.strictEqual(def.daily_points_target, 3);
