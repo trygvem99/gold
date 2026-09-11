@@ -28,9 +28,9 @@ const ICON = {
     '-1 1.4-1.6 2.7-1.6 4.2 0 .8.2 1.5.6 2.1-.9-.4-1.6-1.1-2-2C5.6 13.6 5 15 5 16.4 5 19.9 8.1 22 12 22s7-2.4 ' +
     '7-6.2c0-2.6-1.3-4.7-2.9-6.4-.3 1.3-1 2.1-1.9 2.5.7-2.9-.2-6.5-1.6-9.9z"/></svg>',
 };
-// muted, materially named: these show as a thin band at the rim and a swatch
-// in the lists, never as a whole wedge, so they can afford to be restrained
-const PRIZE_COLORS = ["#B08D57", "#8C5A6B", "#A8763E", "#6E8B6A", "#5B7A8C", "#6B6488", "#9C6B4A", "#7A8B99"];
+// rendered as light-emitting strokes on the dial, so these want to be hues,
+// not materials; whatever is stored gets pushed to full luminance anyway
+const PRIZE_COLORS = ["#5BD1FF", "#FF6FB5", "#FFC46B", "#5EE7B0", "#9B7BFF", "#FF8A6B", "#C8F56B", "#BFE9FF"];
 
 // ---------- helpers ----------
 
@@ -332,7 +332,7 @@ function renderWheel() {
     ? "Add prizes with a weight above zero in Settings."
     : mine.length === 0
       ? `Hit ${effTargetToday()} points in a day to earn a spin.`
-      : "";
+      : "Flick the dial, or tap Spin.";
 
   const odds = $("#odds-list");
   odds.innerHTML = wheelPrizes.map((p) =>
@@ -344,12 +344,20 @@ function renderWheel() {
   renderBadge();
 }
 
-$("#spin-btn").addEventListener("click", async () => {
-  if (Wheel.isSpinning()) return;
+// One entry point for the button and for a flick on the wheel itself. Returns
+// false when there is nothing to spend, so a flick just runs down instead.
+function startSpin(opts) {
+  if (Wheel.isSpinning()) return false;
   const ticket = unspent().sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
   const draw = Gold.drawPrize(wheelPrizes);
-  if (!ticket || !draw) return;
+  if (!ticket || !draw) return false;
+  runSpin(ticket, draw, opts || {});
+  return true;
+}
+$("#spin-btn").addEventListener("click", () => startSpin({}));
+Wheel.setLaunchHandler(startSpin);
 
+async function runSpin(ticket, draw, opts) {
   const blank = !!draw.prize.blank;
   const at = new Date().toISOString();
 
@@ -393,13 +401,13 @@ $("#spin-btn").addEventListener("click", async () => {
       $("#win-kicker").textContent = "YOU WON";
       $("#win-emoji").textContent = draw.prize.emoji || "🎁";
       $("#win-name").textContent = draw.prize.name;
-      card.style.borderColor = draw.prize.color;
+      card.style.borderColor = Wheel.luminous(draw.prize.color, 62);
       $("#win-sub").hidden = true;
       $("#win-ok").textContent = "Add to vault";
     }
     $("#win-overlay").hidden = false;
-  }, { blank });
-});
+  }, { blank, flick: !!opts.flick });
+}
 
 $("#win-ok").addEventListener("click", () => {
   $("#win-overlay").hidden = true;

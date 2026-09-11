@@ -351,112 +351,198 @@ input.switch:checked::after { transform: translateX(20px); background: linear-gr
   position: relative;
   display: flex;
   justify-content: center;
-  padding: 10px 0 2px;
-  perspective: 1100px;
+  padding: 14px 0 6px;
   transform: translate(var(--shx, 0px), var(--shy, 0px)) scale(var(--wscale, 1));
+  --accent: #9BB8FF;
 }
 /* driven per frame while spinning, so the easing only belongs to the release */
 body:not(.spinning) .wheel-stage { transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
-/* seen from slightly above, like a wheel on a stand rather than a pie chart */
-.wheel-box { transform: rotateX(13deg); transform-style: preserve-3d; }
-.wheel-glow {
-  position: absolute;
-  width: 96%; aspect-ratio: 1;
-  top: 2%;
-  background: radial-gradient(circle, rgba(255, 217, 122, 0.55), rgba(232, 185, 74, 0.18) 42%, transparent 66%);
-  filter: blur(30px);
-  opacity: calc(0.24 + var(--heat, 0) * 0.76);
-  transform: scale(calc(1 + var(--heat, 0) * 0.18));
-  pointer-events: none;
-}
 
 /* the stage clears the room while a spin is running */
 body { transition: background-color 0.8s; }
-body.spinning { background: #050507; }
+body.spinning { background: #040407; }
 .ambient { transition: opacity 0.8s; }
-body.spinning .ambient { opacity: 0.2; }
+body.spinning .ambient { opacity: 0.15; }
 #tabs, .odds, .ticket-strip, .view-title { transition: opacity 0.6s; }
 body.spinning #tabs,
 body.spinning .odds,
 body.spinning .ticket-strip,
 body.spinning .view-title,
-body.spinning #wheel-hint { opacity: 0.1; pointer-events: none; }
+body.spinning #wheel-hint { opacity: 0.08; pointer-events: none; }
 body.spinning .spin-btn { opacity: 0; transform: scale(0.96); pointer-events: none; }
+
+#wheel-host { position: relative; width: 100%; display: flex; justify-content: center; }
+.wheel-box { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
+.wheel-box:active { cursor: grabbing; }
+.wheel-svg { display: block; position: relative; z-index: 1; }
+.wheel-disc { will-change: transform; }
+
+/* an ambient orb behind the glass; the accent follows what is under the needle */
+.wheel-orb {
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 38% 34%, color-mix(in oklab, var(--accent) 55%, transparent), transparent 52%),
+    radial-gradient(circle at 66% 68%, rgba(120, 80, 255, 0.35), transparent 55%);
+  filter: blur(34px);
+  opacity: calc(0.28 + var(--heat, 0) * 0.72);
+  transform: scale(calc(0.92 + var(--heat, 0) * 0.16));
+  transition: opacity 0.25s, transform 0.25s;
+  pointer-events: none;
+}
+
+.rail { fill: none; stroke: rgba(255, 255, 255, 0.16); stroke-width: 1; }
+.rail-a { stroke-dasharray: 2 9; }
+.rail-b { stroke-dasharray: 26 40; stroke: rgba(255, 255, 255, 0.10); }
+.wheel-box.idle .rail-a { animation: rail-a 70s linear infinite; }
+.wheel-box.idle .rail-b { animation: rail-b 110s linear infinite; }
+@keyframes rail-a { to { transform: rotate(-360deg); } }
+@keyframes rail-b { to { transform: rotate(360deg); } }
+.rail-a, .rail-b { transform-box: fill-box; transform-origin: center; }
+
+.wheel-divider { stroke: rgba(255, 255, 255, 0.07); stroke-width: 1; }
+.tick { stroke: rgba(255, 255, 255, 0.22); stroke-width: 1; }
+.tick.major { stroke: rgba(255, 255, 255, 0.45); stroke-width: 1.4; }
+
+.arc { transition: opacity 0.5s ease, filter 0.5s ease; }
+.arc.lose { opacity: 0.16; }
+.arc.win .arc-halo { opacity: 2; }
+.arc.win { filter: brightness(1.35) saturate(1.2); }
+.arc-body { transition: opacity 0.3s; }
+
+/* scanning sweep, ring-masked, only visible while it runs */
+.wheel-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  z-index: 2;
+  pointer-events: none;
+  background: conic-gradient(from 0deg, transparent 0deg 300deg, color-mix(in oklab, var(--accent) 60%, white) 360deg);
+  -webkit-mask-image: radial-gradient(circle, transparent 0 79%, #000 82% 95%, transparent 96%);
+  mask-image: radial-gradient(circle, transparent 0 79%, #000 82% 95%, transparent 96%);
+  opacity: calc(var(--heat, 0) * 0.85);
+  mix-blend-mode: screen;
+}
+
+/* labels: upright, orbiting, sized to their wedge */
+.wheel-tag {
+  position: absolute;
+  left: 50%; top: 50%;
+  z-index: 3;
+  text-align: center;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.12;
+  text-shadow: 0 0 12px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  transition: opacity 0.5s;
+}
+.wheel-tag.blank { color: rgba(255, 255, 255, 0.28); letter-spacing: 0.2em; text-transform: uppercase; font-size: 10px !important; }
+.wheel-tag.lose { opacity: 0.18; }
+.wheel-tag.win { text-shadow: 0 0 18px currentColor, 0 0 4px currentColor; }
+
+/* the core readout */
+.wheel-readout {
+  position: absolute;
+  left: 50%; top: 50%;
+  z-index: 4;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 0 40px color-mix(in oklab, var(--accent) 22%, transparent);
+  transition: box-shadow 0.3s;
+}
+.readout-icon { font-size: 30px; line-height: 1; }
+.readout-icon:empty { display: none; }
+.readout-name {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+  color: #F4F1EA;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wheel-readout.rest .readout-name { color: rgba(244, 241, 234, 0.72); }
+.wheel-readout.blank .readout-name { color: rgba(255, 255, 255, 0.35); text-transform: uppercase; letter-spacing: 0.18em; font-size: 12px; }
+.wheel-readout.lock { animation: readout-lock 0.6s cubic-bezier(0.22, 1, 0.36, 1); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 60%, transparent), inset 0 0 50px color-mix(in oklab, var(--accent) 40%, transparent); }
+.wheel-readout.lock .readout-name { color: #fff; text-shadow: 0 0 14px var(--accent); }
+@keyframes readout-lock {
+  0% { transform: translate(-50%, -50%) scale(0.86); filter: brightness(2); }
+  100% { transform: translate(-50%, -50%) scale(1); filter: brightness(1); }
+}
+
+/* the indicator: a slim light with a beam onto the band */
+.wheel-indicator { position: absolute; left: 50%; top: -6px; z-index: 5; pointer-events: none; }
+.indicator-bar {
+  position: absolute; left: 50%; top: 0;
+  width: 4px; height: 26px;
+  transform: translateX(-50%);
+  border-radius: 3px;
+  background: linear-gradient(180deg, #fff, var(--accent));
+  box-shadow: 0 0 10px var(--accent), 0 0 24px color-mix(in oklab, var(--accent) 60%, transparent);
+}
+.indicator-halo {
+  position: absolute; left: 50%; top: 8px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent), transparent 68%);
+  opacity: 0.25;
+  transform: translate(-50%, -50%);
+  filter: blur(2px);
+}
+.indicator-beam {
+  position: absolute; left: 50%; top: 22px;
+  width: 26px; height: 46px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 45%, transparent), transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 40%, #000 60%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 40%, #000 60%, transparent);
+  opacity: calc(0.35 + var(--heat, 0) * 0.65);
+}
 
 .wheel-box.hit::after {
   content: "";
   position: absolute;
-  inset: -7px;
+  inset: 4px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 246, 224, 0.9);
+  border: 1.5px solid var(--accent);
   pointer-events: none;
-  animation: rim-hit 0.45s ease-out forwards;
+  animation: rim-hit 0.5s ease-out forwards;
 }
 @keyframes rim-hit {
-  from { opacity: 0.95; transform: scale(1); }
-  to { opacity: 0; transform: scale(1.07); }
+  from { opacity: 0.9; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.06); }
 }
 
 .shock {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 3px solid rgba(255, 217, 122, 0.85);
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 24px var(--accent);
   opacity: 0;
   pointer-events: none;
+  z-index: 6;
 }
-.shock.go { animation: shock 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.shock.go { animation: shock 1s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 @keyframes shock {
-  from { opacity: 0.95; transform: scale(0.74); }
-  to { opacity: 0; transform: scale(1.95); }
+  from { opacity: 0.95; transform: scale(0.8); }
+  to { opacity: 0; transform: scale(1.7); }
 }
-#wheel-host { position: relative; width: 100%; display: flex; justify-content: center; }
-.wheel-box { position: relative; }
-.wheel-svg { display: block; filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.75)); }
-.peg { fill: #F7DFA0; }
-.peg-shadow { fill: rgba(0, 0, 0, 0.6); }
-.peg-hi { fill: #FFFDF5; }
-.bulb-glow { transition: opacity 0.09s linear; }
-.bulbs.strobe { animation: strobe 0.16s steps(1) 6; }
-@keyframes strobe { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.25; } }
-
-/* light rays behind the winning wedge */
-.rays {
-  position: absolute;
-  inset: -42%;
-  border-radius: 50%;
-  opacity: 0;
-  pointer-events: none;
-  background: repeating-conic-gradient(
-    from 0deg,
-    rgba(255, 232, 170, 0.5) 0deg 4deg,
-    transparent 4deg 15deg
-  );
-  -webkit-mask-image: radial-gradient(circle, transparent 26%, #000 42%, transparent 72%);
-  mask-image: radial-gradient(circle, transparent 26%, #000 42%, transparent 72%);
-}
-.rays.go { animation: rays 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-@keyframes rays {
-  0% { opacity: 0; transform: rotate(0deg) scale(0.75); }
-  22% { opacity: 0.95; }
-  100% { opacity: 0; transform: rotate(26deg) scale(1.15); }
-}
-.wheel-disc { will-change: transform; }
-.wheel-label {
-  font: 600 10.5px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-  fill: #EDE3D0;
-  paint-order: stroke;
-  stroke: rgba(0, 0, 0, 0.6);
-  stroke-width: 2.6px;
-  stroke-linejoin: round;
-}
-.wheel-label.blank { fill: #6C6A72; letter-spacing: 0.2em; }
-/* engraved: a dark score with a gold hairline riding on it */
-.wheel-divider { stroke: rgba(0, 0, 0, 0.55); stroke-width: 2.2; }
-.wheel-divider-hi { stroke: rgba(212, 175, 102, 0.42); stroke-width: 0.8; }
-.wheel-pointer { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); }
 
 .spin-btn {
   position: relative;

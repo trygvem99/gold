@@ -19,8 +19,10 @@ no cost.
   so they skip the points economy entirely.
 - Hit the day's **points target** → 1 ticket.
 - Every **N qualifying days in a row** (default 7) → 1 bonus ticket.
-- A ticket buys one spin. Prize odds are per-prize **weights** you set; the
-  percentage each weight produces is shown live while you drag the slider.
+- A ticket buys one spin: flick the dial or tap Spin. Prize odds are per-prize
+  **weights** you set; the percentage each weight produces is shown live while you
+  drag the slider. The core reads out whatever is under the indicator, so a prize
+  name never has to fit inside its wedge.
 - One wedge **wins nothing** (16% by default). A spin is a gamble or it is just
   a vending machine. Any prize can be made a blank, and its weight tuned.
 - Wins go to the **Vault** and stay there until you mark them used.
@@ -96,7 +98,8 @@ node scripts/test-logic.js   # pure-function tests
 - `index.html` / `app.js` / `styles.css` — the app (Today, Wheel, Vault, Settings)
 - `logic.js` — every rule: points, qualifying days, streaks, ticket
   reconciliation, weighted draw, wheel geometry. Pure, and tested in node.
-- `wheel.js` — the wheel: 48 pegs, marquee rim, five-act spin, haptics, confetti
+- `wheel.js` — the dial: luminous arc segments over glass, a core readout, labels sized
+  to their wedge, flick-to-spin, five-act physics, haptics, sparks
 - `sound.js` — every sound synthesised with Web Audio; no audio files ship
 - `db.js` — IndexedDB layer, backup and restore
 - `seed.json` — the habits and prizes a fresh install starts with
