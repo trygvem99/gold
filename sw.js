@@ -1,6 +1,6 @@
 // Network-first with cache fallback: offline works, and new deploys are picked
 // up automatically without a cache-name bump per deploy.
-const CACHE = "gold-v2";
+const CACHE = "gold-v3";
 const SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./logic.js", "./db.js", "./sound.js", "./wheel.js", "./manifest.webmanifest", "./icon.svg", "./seed.json"];
 
 self.addEventListener("install", (e) => {
@@ -28,8 +28,11 @@ self.addEventListener("fetch", (e) => {
   e.respondWith(
     fetch(e.request, { cache: "no-cache" })
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        // an error page must never replace a good cached copy
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy));
+        }
         return res;
       })
       .catch(() => caches.match(e.request))

@@ -747,6 +747,30 @@ body.spinning .spin-btn { opacity: 0; transform: scale(0.96); pointer-events: no
   pointer-events: none;
 }
 
+.boot {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
+}
+.boot-mark {
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-top-color: var(--gold);
+  animation: boot-spin 0.9s linear infinite;
+}
+@keyframes boot-spin { to { transform: rotate(360deg); } }
+.load-problem {
+  position: fixed; inset: 0; z-index: 61;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--bg);
+}
+.load-card {
+  max-width: 340px; text-align: center;
+  background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px;
+}
+.load-card h3 { color: var(--text); font-size: 17px; margin-bottom: 8px; }
+.load-card p { color: var(--dim); font-size: 14px; margin: 0 0 18px; }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

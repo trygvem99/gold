@@ -12,6 +12,22 @@
 <body>
   <div class="ambient" aria-hidden="true"></div>
 
+  <!-- covers the pre-rendered markup until data has actually loaded -->
+  <div class="boot" id="boot" aria-hidden="true"><div class="boot-mark"></div></div>
+
+  <div class="load-problem" id="load-problem" hidden>
+    <div class="load-card">
+      <h3>Your data didn't load</h3>
+      <p id="load-problem-text"></p>
+      <button class="btn primary" id="load-problem-retry" type="button">Try again</button>
+      <p class="load-or">If it keeps failing, the data may really be gone from this phone.</p>
+      <div class="btn-row center">
+        <button class="btn small" id="load-problem-restore" type="button">Restore a backup</button>
+        <button class="btn small" id="load-problem-fresh" type="button">Start over</button>
+      </div>
+    </div>
+  </div>
+
   <main>
     <!-- TODAY -->
     <section id="view-today" class="view">

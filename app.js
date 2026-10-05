@@ -816,9 +816,10 @@ $("#restore-file").addEventListener("change", async (e) => {
   try {
     const json = JSON.parse(await file.text());
     await Data.restoreBackup(json);
-    await reloadCaches();
-    renderSettings();
+    await reloadCaches(); // records the restored counts as what this phone holds
     alert("Restored.");
+    location.reload();   // boot again on the restored data, from any screen
+    return;
   } catch (err) {
     alert("Restore failed: " + err.message);
   }
@@ -857,12 +858,23 @@ function showBarNotice(move, prev) {
 
 // ---------- init ----------
 
-async function reloadCaches() {
-  [habits, goals, days, tickets, prizes, wins] = await Promise.all([
+const counts = () => ({
+  habits: habits.length, goals: goals.length, days: days.length, prizes: prizes.length, wins: wins.length,
+});
+const shortOf = (want) => {
+  const have = counts();
+  return Object.keys(have).filter((k) => have[k] < (want[k] || 0));
+};
+
+async function loadOnce() {
+  [habits, goals, days, tickets, prizes, wins] = await DB.withTimeout(Promise.all([
     Data.habits.all(), Data.goals.all(), Data.days.all(),
     Data.tickets.all(), Data.prizes.all(), Data.wins.all(),
-  ]);
-  settings = await Data.getSettings();
+  ]), 4000, "Loading your data");
+  settings = await DB.withTimeout(Data.getSettings(), 4000, "Loading your settings");
+}
+
+async function ensureSettings() {
   if (!settings) {
     settings = Gold.defaultSettings(habits, Gold.todayStr());
     await Data.saveSettings(settings);
@@ -874,9 +886,75 @@ async function reloadCaches() {
   }
 }
 
+// After a restore or any deliberate reload: trust what is read.
+async function reloadCaches() {
+  await loadOnce();
+  await ensureSettings();
+  Data.remember(counts());
+}
+
+// At startup, a read that comes back short of what this phone is known to hold
+// is a failed read. Re-open and retry; if it stays short, return false and
+// write nothing — no seed, no default settings, no ticket reconciliation —
+// because every one of those would make the bad read permanent.
+async function bootLoad() {
+  const want = Data.known();
+  let failed = null;
+  for (let i = 0; i < 4; i++) {
+    try {
+      await loadOnce();
+      failed = null;
+      if (!shortOf(want).length && (settings || !want.seeded)) break;
+    } catch (e) {
+      failed = e;
+    }
+    if (i < 3) {
+      DB.close();
+      await new Promise((r) => setTimeout(r, 200 * (i + 1)));
+    }
+  }
+  if (failed) throw failed;
+  const missing = shortOf(want);
+  if (missing.length || (!settings && want.seeded)) {
+    return { ok: false, want, missing };
+  }
+  await ensureSettings();
+  Data.remember(counts());
+  return { ok: true };
+}
+
+function showLoadProblem(msg) {
+  const box = $("#load-problem");
+  $("#load-problem-text").textContent = msg;
+  box.hidden = false;
+  $("#boot").hidden = true;
+}
+$("#load-problem-retry").addEventListener("click", () => location.reload());
+$("#load-problem-restore").addEventListener("click", () => $("#restore-file").click());
+// The only path that lets a phone known to hold data be seeded again, and it
+// takes an explicit yes.
+$("#load-problem-fresh").addEventListener("click", () => {
+  if (!confirm("Start over with a fresh setup? Only do this if your data is really gone — try again first.")) return;
+  localStorage.removeItem("gold_known");
+  location.reload();
+});
+
 (async function init() {
-  await Data.init();
-  await reloadCaches();
+  try {
+    await DB.withTimeout(Data.init(), 6000, "Opening storage");
+    const res = await bootLoad();
+    if (!res.ok) {
+      const have = counts();
+      const lines = res.missing.map((k) => `${have[k]} of ${res.want[k]} ${k}`).join(", ");
+      showLoadProblem(`Only part of your data loaded (${lines}). Nothing has been changed or deleted.`);
+      return;
+    }
+  } catch (e) {
+    console.error(e);
+    showLoadProblem(`${e.message}. Nothing has been changed or deleted.`);
+    return;
+  }
+  $("#boot").hidden = true;
   today = Gold.todayStr();
   await syncTickets();
   await checkBar();

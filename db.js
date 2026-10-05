@@ -7,6 +7,7 @@ const DB = (() => {
   const NAME = "gold";
   const VERSION = 2;
   let _db = null;
+  let _opening = null; // in-flight open; without it parallel reads each opened the database
 
   // Guarded from version 1 so that bumping VERSION later and appending a store
   // is safe on installs that already exist.
@@ -27,12 +28,22 @@ const DB = (() => {
 
   function open() {
     if (_db) return Promise.resolve(_db);
-    return new Promise((resolve, reject) => {
+    if (_opening) return _opening;
+    _opening = new Promise((resolve, reject) => {
       const req = indexedDB.open(NAME, VERSION);
+      req.onblocked = () => reject(new Error("Storage is held open by another tab"));
       req.onupgradeneeded = () => upgrade(req.result);
-      req.onsuccess = () => { _db = req.result; resolve(_db); };
+      req.onsuccess = () => {
+        _db = req.result;
+        // a backgrounded app can have its connection closed underneath it;
+        // drop the handle so the next call opens a fresh one
+        _db.onclose = () => { _db = null; };
+        resolve(_db);
+      };
       req.onerror = () => reject(req.error);
     });
+    _opening.catch(() => {}).then(() => { _opening = null; });
+    return _opening;
   }
 
   function tx(store, mode, fn) {
@@ -40,9 +51,20 @@ const DB = (() => {
       const t = db.transaction(store, mode);
       const result = fn(t.objectStore(store));
       t.oncomplete = () => resolve(result instanceof IDBRequest ? result.result : result);
-      t.onerror = () => reject(t.error);
+      t.onerror = () => reject(t.error || new Error("Storage transaction failed"));
+      // Without this an aborted transaction settles nothing and startup waits
+      // on it forever — the same hang CalTrack had.
+      t.onabort = () => { close(); reject(t.error || new Error("Storage transaction aborted")); };
     }));
   }
+
+  // Drops the handle so the next call re-opens. A connection that hands back
+  // empty stores on a cold start is only fixed by opening a new one.
+  function close() { if (_db) { try { _db.close(); } catch (e) { /* already closed */ } _db = null; } }
+
+  // Nothing in storage may hang startup.
+  const withTimeout = (p, ms, what) =>
+    Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + " timed out")), ms))]);
 
   const put = (store, value) => tx(store, "readwrite", (s) => s.put(value));
   const bulkPut = (store, values) => tx(store, "readwrite", (s) => { values.forEach((v) => s.put(v)); });
@@ -52,13 +74,22 @@ const DB = (() => {
   const get = (store, key) => tx(store, "readonly", (s) => s.get(key));
   const getAll = (store) => tx(store, "readonly", (s) => s.getAll());
 
-  return { open, put, bulkPut, bulkDel, del, clear, get, getAll };
+  return { open, close, withTimeout, put, bulkPut, bulkDel, del, clear, get, getAll };
 })();
 
 const Data = (() => {
   const STORES = ["habits", "goals", "days", "tickets", "prizes", "wins", "settings"];
   const FORMAT = 2;
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+  // What this phone is known to hold, kept outside IndexedDB so that a read
+  // which comes back empty can be recognised as wrong instead of trusted.
+  // Habits, prizes and goals are archived rather than deleted and days and
+  // wins are never removed, so these counts only ever go up — except through a
+  // restore, which rewrites them.
+  const KNOWN = "gold_known";
+  const known = () => { try { return JSON.parse(localStorage.getItem(KNOWN)) || {}; } catch (e) { return {}; } };
+  const remember = (counts) => localStorage.setItem(KNOWN, JSON.stringify(Object.assign({ seeded: true }, counts)));
 
   async function init() {
     await DB.open();
@@ -67,6 +98,14 @@ const Data = (() => {
     }
     const seeded = await DB.get("settings", "seeded");
     if (seeded) return;
+    // An empty read on a phone that has held data is a failed read, not a new
+    // install. Seeding over it is what replaced real habits with the defaults.
+    if (known().seeded) return;
+    const [h, p] = await Promise.all([DB.getAll("habits"), DB.getAll("prizes")]);
+    if (h.length || p.length) {
+      await DB.put("settings", { key: "seeded", at: new Date().toISOString() });
+      return;
+    }
     try {
       const res = await fetch("seed.json");
       if (res.ok) {
@@ -137,7 +176,7 @@ const Data = (() => {
   }
 
   return {
-    init, newId, getSettings, saveSettings, exportBackup, restoreBackup,
+    init, newId, getSettings, saveSettings, exportBackup, restoreBackup, known, remember,
     habits: {
       all: () => DB.getAll("habits"),
       put: (h) => DB.put("habits", h),
