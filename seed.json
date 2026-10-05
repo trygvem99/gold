@@ -1,11 +1,11 @@
 {
   "habits": [
-    { "name": "Meditate", "emoji": "🧘", "target": 2 },
-    { "name": "Train", "emoji": "🏋️", "target": 1 },
-    { "name": "Read 30 min", "emoji": "📖", "target": 1 },
-    { "name": "No sugar", "emoji": "🚫", "target": 1 },
-    { "name": "Walk outside", "emoji": "🚶", "target": 1 },
-    { "name": "Lights out by 23:00", "emoji": "🌙", "target": 1 }
+    { "name": "Meditate", "emoji": "🧘", "target": 2, "time": "morning" },
+    { "name": "Train", "emoji": "🏋️", "target": 1, "time": "afternoon" },
+    { "name": "Read 30 min", "emoji": "📖", "target": 1, "time": "evening" },
+    { "name": "No sugar", "emoji": "🚫", "target": 1, "time": "any" },
+    { "name": "Walk outside", "emoji": "🚶", "target": 1, "time": "afternoon" },
+    { "name": "Lights out by 23:00", "emoji": "🌙", "target": 1, "time": "evening" }
   ],
   "prizes": [
     { "name": "Night out", "emoji": "🍸", "color": "#5BD1FF", "weight": 3 },

@@ -10,7 +10,12 @@ no cost.
 ## The deal
 
 - Every habit has a **daily target count**. Meditating twice a day is one habit
-  with a target of 2.
+  with a target of 2. A habit can run **every day or on chosen weekdays**, and
+  sits in a **morning, afternoon, evening or anytime** group on Today.
+- A day with nothing scheduled is a **rest day**: it can neither earn nor break a
+  streak, and the moving bar does not count it.
+- The **last seven days** can be edited from the week strip, for the day you
+  forgot to log.
 - Every completion is **1 point**, capped at each habit's own target — one easy
   habit cannot be farmed to reach the threshold.
 - **One-off goals** ("this week") are worth 1 point, on the day you finish them.
@@ -46,8 +51,17 @@ withdraw a ticket you already earned.
 
 Tickets are a ledger, not a counter. At most one daily and one streak ticket per
 calendar date, ever, so unchecking and re-checking cannot mint a second one. If
-a day falls back below the threshold its ticket disappears again — unless it has
-already been spent, in which case the reward stays yours.
+you un-check a day back below the threshold its ticket disappears again — unless
+it has already been spent, in which case the reward stays yours. Changing a
+setting (a habit's target, its schedule, the bar) can add tickets but never takes
+one back.
+
+### Progress
+
+Current and best streak, the share of days on target, a month calendar of every
+day, milestones, and per habit: current and best streak, 30-day rate, a
+contribution grid, and **habit strength** — Loop Habit Tracker's exponentially
+smoothed score, where one missed day dents the number instead of zeroing it.
 
 Habits and prizes are archived, never deleted, and a win copies the prize's name,
 emoji and colour into itself. Rewriting the prize list cannot corrupt the vault,
@@ -61,6 +75,9 @@ and adding a habit today cannot retroactively break a live streak.
 
 ## Honest limits
 
+- **Startup is guarded.** If storage reads back less than this phone is known to
+  hold, the app retries, and if it stays short it changes nothing and says so —
+  it never seeds or writes defaults over data that failed to load.
 - **One device.** Data lives on the phone that entered it. Clearing browser data
   or uninstalling the app deletes it. **The export in Settings is the only safety
   net** — the Backup card nags once the last export is over 14 days old.
@@ -95,9 +112,12 @@ node scripts/test-logic.js   # pure-function tests
 
 ## Files
 
-- `index.html` / `app.js` / `styles.css` — the app (Today, Wheel, Vault, Settings)
-- `logic.js` — every rule: points, qualifying days, streaks, ticket
-  reconciliation, weighted draw, wheel geometry. Pure, and tested in node.
+- `index.html` / `app.js` / `styles.css` — the app (Today, Progress, Rewards, Settings)
+- `ui.js` — shared visuals: the gradient ring, sparks, counters, grain
+- `fonts/` — Inter and Sora, self-hosted so they work offline (SIL Open Font License)
+- `logic.js` — every rule: points, schedules, rest days, streaks, habit stats,
+  milestones, ticket reconciliation, weighted draw, wheel geometry. Pure, and
+  tested in node.
 - `wheel.js` — the dial: luminous arc segments over glass, a core readout, labels sized
   to their wedge, flick-to-spin, five-act physics, haptics, sparks
 - `sound.js` — every sound synthesised with Web Audio; no audio files ship

@@ -102,16 +102,25 @@ let rec = G.reconcileTickets(existing, owed);
 assert.deepStrictEqual(rec, { toAdd: [], toDeleteIds: [] }, "reconciling twice mints nothing");
 
 const dropped = owed.filter((t) => t.date !== "2026-09-06");
-rec = G.reconcileTickets(existing, dropped);
+rec = G.reconcileTickets(existing, dropped, "2026-09-06");
 assert.strictEqual(rec.toDeleteIds.length, 1, "unchecking a day withdraws its unspent ticket");
 
+// changing a setting re-judges history, but must never take back a ticket
+assert.deepStrictEqual(G.reconcileTickets(existing, dropped).toDeleteIds, [],
+  "with no edited day, nothing is withdrawn");
+// unchecking one day may only touch that day and what follows it
+const earlyDrop = owed.filter((t) => t.date !== "2026-09-02");
+assert.deepStrictEqual(G.reconcileTickets(existing, earlyDrop, "2026-09-05").toDeleteIds, [],
+  "editing a later day cannot withdraw an earlier day's ticket");
+assert.strictEqual(G.reconcileTickets(existing, earlyDrop, "2026-09-02").toDeleteIds.length, 1);
+
 existing = existing.map((t) => (t.date === "2026-09-06" ? Object.assign({}, t, { spent_at: "now" }) : t));
-assert.deepStrictEqual(G.reconcileTickets(existing, dropped).toDeleteIds, [], "a spent ticket is never clawed back");
+assert.deepStrictEqual(G.reconcileTickets(existing, dropped, "2026-09-06").toDeleteIds, [], "a spent ticket is never clawed back");
 assert.deepStrictEqual(G.reconcileTickets(existing, owed).toAdd, [], "re-qualifying does not mint a second ticket");
 
 // goal tickets are not day-derived and must survive reconciliation untouched
 const withGoal = existing.concat([{ id: "gt", date: "2026-09-06", reason: "goal", source: "q1", spent_at: null }]);
-rec = G.reconcileTickets(withGoal, dropped);
+rec = G.reconcileTickets(withGoal, dropped, "2026-09-01");
 assert.strictEqual(rec.toDeleteIds.indexOf("gt"), -1, "a quarterly goal's tickets are not swept up by reconciliation");
 assert.strictEqual(G.unspentTickets(withGoal).length, withGoal.length - 1);
 
@@ -233,6 +242,97 @@ assert.ok(G.angleUnderPointer(shallow.rotation) > G.angleUnderPointer(deep.rotat
 const one = [{ id: "only", weight: 5 }];
 assert.strictEqual(G.drawPrize(one).index, 0);
 assert.strictEqual(G.segmentAngles(one)[0].end, 360);
+
+// ---------- schedules and rest days ----------
+// 2026-09-07 is a Monday
+assert.strictEqual(G.weekdayOf("2026-09-07"), 1);
+assert.strictEqual(G.weekdayOf("2026-09-13"), 0);
+const weekdays = [1, 2, 3, 4, 5];
+const wk = Object.assign(habit("wk", 1), { days: weekdays });
+assert.strictEqual(G.scheduledOn(wk, "2026-09-07"), true);
+assert.strictEqual(G.scheduledOn(wk, "2026-09-12"), false, "Saturday is off for a weekday habit");
+assert.strictEqual(G.scheduledOn(habit("d", 1), "2026-09-12"), true, "no days list means every day");
+assert.strictEqual(G.habitsActiveOn([wk], "2026-09-12").length, 0);
+assert.strictEqual(G.isRestDay([wk], [], "2026-09-12"), true);
+assert.strictEqual(G.isRestDay([wk], [weekGoal("g", "2026-09-12")], "2026-09-12"), false,
+  "a one-off done on a rest day makes it a real day");
+
+// a weekday routine done every weekday: the weekend must not break the streak
+const workweek = [];
+for (let d = "2026-09-07"; d <= "2026-09-18"; d = G.shiftDate(d, 1)) {
+  if (G.scheduledOn(wk, d)) workweek.push(day(d, { wk: 1 }));
+}
+const s1 = cfg(1);
+const wkRuns = G.runLengths(workweek, [wk], [], s1, "2026-09-18");
+assert.strictEqual(wkRuns["2026-09-14"], 6, "Monday continues Friday's run across the weekend");
+assert.strictEqual(wkRuns["2026-09-18"], 10);
+assert.strictEqual(G.currentStreak(workweek, [wk], [], s1, "2026-09-20"), 10,
+  "on Sunday the streak still stands: the weekend asked nothing");
+assert.strictEqual(G.currentStreak(workweek, [wk], [], s1, "2026-09-22"), 0,
+  "missing Monday breaks it once Monday is over");
+assert.strictEqual(G.bestStreak(workweek, [wk], [], s1, "2026-09-18"), 10);
+// the streak bonus counts through the weekend too
+const wkOwed = G.ticketsOwed(workweek, [wk], [], cfg(1, { streak_length: 7 }), "2026-09-18");
+assert.deepStrictEqual(wkOwed.filter((t) => t.reason === "streak").map((t) => t.date), ["2026-09-15"]);
+
+// the moving bar judges only days that asked something
+const wkHist = [];
+for (let d = "2026-08-17"; d <= "2026-09-05"; d = G.shiftDate(d, 1)) {
+  if (G.scheduledOn(wk, d)) wkHist.push(day(d, { wk: 1 }));
+}
+const two = [Object.assign(habit("wk", 1), { days: weekdays }), Object.assign(habit("wk2", 1), { days: weekdays })];
+const twoHist = wkHist.map((d) => day(d.date, { wk: 1, wk2: 1 }));
+const wkUp = G.adaptTarget(twoHist, two, [], cfg(1), "2026-09-06");
+assert.strictEqual(wkUp && wkUp.dir, "up", "a perfect weekday record raises the bar despite empty weekends");
+assert.strictEqual(wkUp.window, 10, "ten weekdays in the last fourteen days");
+
+// ---------- per-habit stats ----------
+const med = habit("med", 2, "2026-09-01");
+const medDays = [
+  day("2026-09-01", { med: 2 }), day("2026-09-02", { med: 2 }), day("2026-09-03", { med: 1 }),
+  day("2026-09-04", { med: 2 }), day("2026-09-05", { med: 2 }), day("2026-09-06", { med: 2 }),
+];
+let hs = G.habitStats(med, medDays, "2026-09-06");
+assert.strictEqual(hs.current, 3);
+assert.strictEqual(hs.best, 3);
+assert.strictEqual(hs.total, 5, "a half-done day is not a done day");
+assert.strictEqual(hs.completions, 11);
+assert.ok(Math.abs(hs.rate - 5 / 6) < 1e-9);
+assert.ok(hs.strength > 0 && hs.strength < 1);
+// an unfinished today counts against nothing
+hs = G.habitStats(med, medDays, "2026-09-07");
+assert.strictEqual(hs.current, 3, "today not done yet: streak still shows yesterday's");
+assert.ok(Math.abs(hs.rate - 5 / 6) < 1e-9);
+// strength forgives a miss, the streak does not
+const strong = G.habitStats(med, medDays.concat([day("2026-09-07", {})]), "2026-09-08");
+assert.strictEqual(strong.current, 0);
+assert.ok(strong.strength > hs.strength * 0.9, "one missed day dents strength, it does not reset it");
+// a weekday habit is not marked down for weekends
+const wkStats = G.habitStats(Object.assign(habit("wk", 1, "2026-09-07"), { days: weekdays }), workweek, "2026-09-20");
+assert.strictEqual(wkStats.current, 10);
+assert.strictEqual(wkStats.rate, 1);
+
+const grid = G.habitGrid(Object.assign(habit("wk", 1, "2026-09-07"), { days: weekdays }), workweek, "2026-09-11", "2026-09-14");
+assert.deepStrictEqual(grid.map((c) => c.value), [1, null, null, 1], "weekends are empty cells, not misses");
+assert.deepStrictEqual(G.habitGrid(med, medDays, "2026-09-03", "2026-09-03").map((c) => c.value), [0.5]);
+
+// ---------- milestones ----------
+const ms = G.milestones({ best: 8, reps: 120, spins: 0, quarters: 1 });
+const byId = (id) => ms.find((m) => m.id === id);
+assert.strictEqual(byId("streak-7").earned, true);
+assert.strictEqual(byId("streak-14").earned, false);
+assert.ok(Math.abs(byId("streak-14").progress - 8 / 14) < 1e-9);
+assert.strictEqual(byId("reps-100").earned, true);
+assert.strictEqual(byId("spin-1").earned, false);
+assert.strictEqual(byId("quarter-1").earned, true);
+
+// ---------- time of day ----------
+assert.strictEqual(G.slotOf({}), "any");
+assert.strictEqual(G.slotOf({ time: "evening" }), "evening");
+assert.strictEqual(G.slotOf({ time: "nonsense" }), "any");
+assert.strictEqual(G.slotForHour(7), "morning");
+assert.strictEqual(G.slotForHour(13), "afternoon");
+assert.strictEqual(G.slotForHour(21), "evening");
 
 // ---------- icon suggestions ----------
 assert.strictEqual(G.suggestIcons("Run a half marathon")[0], "🏃");

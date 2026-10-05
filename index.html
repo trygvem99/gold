@@ -3,20 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0B0B0F" />
+  <meta name="theme-color" content="#06060A" />
   <title>Gold</title>
+  <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="styles.css" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
 </head>
 <body>
-  <div class="ambient" aria-hidden="true"></div>
+  <!-- atmosphere: slow aurora behind everything, grain over it -->
+  <div class="aurora" aria-hidden="true"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
+  <div class="grain" aria-hidden="true"></div>
 
   <!-- covers the pre-rendered markup until data has actually loaded -->
   <div class="boot" id="boot" aria-hidden="true"><div class="boot-mark"></div></div>
 
   <div class="load-problem" id="load-problem" hidden>
-    <div class="load-card">
+    <div class="load-card glass">
       <h3>Your data didn't load</h3>
       <p id="load-problem-text"></p>
       <button class="btn primary" id="load-problem-retry" type="button">Try again</button>
@@ -31,100 +35,90 @@
   <main>
     <!-- TODAY -->
     <section id="view-today" class="view">
-      <div class="hero">
-        <div class="ring-wrap">
-          <svg class="ring" viewBox="0 0 140 140" aria-hidden="true">
-            <defs>
-              <linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="#FFD97A" />
-                <stop offset="100%" stop-color="#A87B1F" />
-              </linearGradient>
-            </defs>
-            <circle class="ring-track" cx="70" cy="70" r="60" />
-            <circle class="ring-mark" cx="70" cy="70" r="60" id="ring-mark" />
-            <circle class="ring-fill" cx="70" cy="70" r="60" id="ring-fill" />
-          </svg>
-          <div class="ring-center">
-            <div class="ring-points" id="ring-points">0</div>
-            <div class="ring-of" id="ring-of">of 0</div>
-          </div>
+      <header class="page-head" data-rise>
+        <div>
+          <div class="eyebrow" id="today-eyebrow"></div>
+          <h1 class="page-title" id="today-title">Today</h1>
         </div>
-        <div class="hero-side">
-          <div class="hero-date" id="hero-date"></div>
-          <button class="stat streak" id="streak-stat" type="button">
-            <span class="stat-icon"><svg class="ico flame" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.6 2c.4 3-1.8 4.4-3 6.1-1 1.4-1.6 2.7-1.6 4.2 0 .8.2 1.5.6 2.1-.9-.4-1.6-1.1-2-2C5.6 13.6 5 15 5 16.4 5 19.9 8.1 22 12 22s7-2.4 7-6.2c0-2.6-1.3-4.7-2.9-6.4-.3 1.3-1 2.1-1.9 2.5.7-2.9-.2-6.5-1.6-9.9z" /></svg></span>
-            <span class="stat-num" id="streak-num">0</span>
-            <span class="stat-label">day streak</span>
-          </button>
-          <button class="stat tickets" id="tickets-stat" type="button">
-            <span class="stat-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16a1.5 1.5 0 0 1 1.5 1.5V10a2 2 0 0 0 0 4v1.5A1.5 1.5 0 0 1 20 17H4a1.5 1.5 0 0 1-1.5-1.5V14a2 2 0 0 0 0-4V8.5A1.5 1.5 0 0 1 4 7z" /><path d="M9.5 8.2v1.5M9.5 11.2v1.5M9.5 14.3v1.5" /></svg></span>
-            <span class="stat-num" id="tickets-num">0</span>
-            <span class="stat-label">spins ready</span>
-          </button>
-        </div>
-      </div>
+      </header>
 
-      <div class="notice" id="bar-notice" hidden>
+      <div class="week-strip" id="week-strip" data-rise></div>
+
+      <div class="hero glass" id="hero" data-rise></div>
+
+      <div class="notice glass" id="bar-notice" hidden>
         <div id="bar-notice-text"></div>
         <button class="linkish" id="bar-notice-undo" type="button">Undo</button>
       </div>
 
-      <div id="habit-list"></div>
-      <p class="hint" id="today-hint"></p>
-
-      <h3 class="sub" id="week-head" hidden>This week</h3>
-      <div id="week-list"></div>
-
-      <h3 class="sub" id="quarter-head" hidden>This quarter</h3>
-      <div id="quarter-list"></div>
+      <div id="today-sections"></div>
+      <div id="goal-sections"></div>
+      <p class="hint center" id="today-hint"></p>
     </section>
 
-    <!-- WHEEL -->
+    <!-- PROGRESS -->
+    <section id="view-progress" class="view" hidden>
+      <header class="page-head" data-rise>
+        <div>
+          <div class="eyebrow">Your record</div>
+          <h1 class="page-title">Progress</h1>
+        </div>
+      </header>
+      <div id="progress-root"></div>
+    </section>
+
+    <!-- REWARDS: the wheel and the vault -->
     <section id="view-wheel" class="view" hidden>
-      <h2 class="view-title">The Wheel</h2>
+      <header class="page-head" data-rise>
+        <div>
+          <div class="eyebrow">Earned, not given</div>
+          <h1 class="page-title">Rewards</h1>
+        </div>
+      </header>
       <div class="ticket-strip" id="ticket-strip"></div>
       <div class="wheel-stage">
-        <div class="wheel-glow" aria-hidden="true"></div>
         <div id="wheel-host"></div>
       </div>
       <button class="btn spin-btn" id="spin-btn" type="button">Spin</button>
       <p class="hint center" id="wheel-hint"></p>
-      <div class="odds" id="odds-list"></div>
-    </section>
+      <div class="odds glass" id="odds-list"></div>
 
-    <!-- VAULT -->
-    <section id="view-vault" class="view" hidden>
-      <h2 class="view-title">The Vault</h2>
+      <h3 class="section-label" id="vault-head">Your rewards</h3>
       <div id="vault-open"></div>
-      <h3 class="sub" id="vault-past-head" hidden>Already used</h3>
+      <h3 class="section-label" id="vault-past-head" hidden>Already used</h3>
       <div id="vault-past"></div>
     </section>
 
     <!-- SETTINGS -->
     <section id="view-settings" class="view" hidden>
-      <h2 class="view-title">Settings</h2>
+      <header class="page-head" data-rise>
+        <div>
+          <div class="eyebrow">Make it yours</div>
+          <h1 class="page-title">Settings</h1>
+        </div>
+      </header>
 
-      <div class="card">
+      <div class="card glass" data-rise>
         <h3>Habits</h3>
         <div id="habits-editor"></div>
         <button class="btn small" id="add-habit-btn" type="button">+ Add habit</button>
       </div>
 
-      <div class="card">
+      <div class="card glass" data-rise>
         <h3>This week</h3>
         <p class="hint">One-off goals. Worth the same as one habit, on the day you finish them.</p>
         <div id="week-editor"></div>
         <button class="btn small" id="add-week-btn" type="button">+ Add one-off goal</button>
       </div>
 
-      <div class="card">
+      <div class="card glass" data-rise>
         <h3>Quarterly goals</h3>
         <p class="hint">Big goals. Finishing one pays tickets outright.</p>
         <div id="quarter-editor"></div>
         <button class="btn small" id="add-quarter-btn" type="button">+ Add quarterly goal</button>
       </div>
 
-      <div class="card">
+      <div class="card glass" data-rise>
         <h3>The deal</h3>
         <label class="field">
           <span>Points needed for a spin</span>
@@ -144,13 +138,13 @@
         <span class="saved" id="deal-saved" hidden>Saved ✓</span>
       </div>
 
-      <div class="card">
+      <div class="card glass" data-rise>
         <h3>Prizes</h3>
         <div id="prizes-editor"></div>
         <button class="btn small" id="add-prize-btn" type="button">+ Add prize</button>
       </div>
 
-      <div class="card">
+      <div class="card glass" data-rise>
         <h3>Sound</h3>
         <label class="field">
           <span>Wheel and habit sounds</span>
@@ -158,7 +152,7 @@
         </label>
       </div>
 
-      <div class="card">
+      <div class="card glass" data-rise>
         <h3>Backup</h3>
         <p class="hint" id="backup-hint"></p>
         <div class="btn-row">
@@ -167,21 +161,22 @@
         </div>
         <input type="file" id="restore-file" accept="application/json" hidden />
       </div>
+      <p class="build" id="build"></p>
     </section>
   </main>
 
-  <nav id="tabs">
+  <nav id="tabs" class="dock">
     <button data-view="today" class="tab active" type="button">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" opacity="0.5" /><path d="m8.3 12.2 2.7 2.7 5-5.5" stroke-width="2" /></svg>Today
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" opacity="0.5" /><path d="m8.3 12.2 2.7 2.7 5-5.5" stroke-width="2" /></svg><span>Today</span>
+    </button>
+    <button data-view="progress" class="tab" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16" opacity="0.5" /><path d="M6.5 16v-4M11.2 16V7.5M15.8 16v-6M20 16V5" stroke-width="2" /></svg><span>Progress</span>
     </button>
     <button data-view="wheel" class="tab" type="button">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 12V3.5M12 12l7.4 4.3M12 12l-7.4 4.3" /><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg>Wheel
-    </button>
-    <button data-view="vault" class="tab" type="button">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.6" /><circle cx="12" cy="12" r="3.4" /><path d="M12 7.2v1.4M12 15.4v1.4M7.9 12h1.3M14.8 12h1.3" /></svg>Vault
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 12V3.5M12 12l7.4 4.3M12 12l-7.4 4.3" /><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg><span>Rewards</span>
     </button>
     <button data-view="settings" class="tab" type="button">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h6.5M15 7.5h5M4 16.5h4.5M13 16.5h7M4 12h11.5M20 12h0.5" /><circle cx="12.8" cy="7.5" r="2.3" /><circle cx="10.8" cy="16.5" r="2.3" /><circle cx="17.8" cy="12" r="2.3" /></svg>Settings
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h6.5M15 7.5h5M4 16.5h4.5M13 16.5h7M4 12h11.5M20 12h0.5" /><circle cx="12.8" cy="7.5" r="2.3" /><circle cx="10.8" cy="16.5" r="2.3" /><circle cx="17.8" cy="12" r="2.3" /></svg><span>Settings</span>
     </button>
   </nav>
 
@@ -219,6 +214,7 @@
 
   <div class="modal" id="editor-modal" hidden>
     <div class="sheet">
+      <div class="sheet-grip"></div>
       <h3 id="editor-title"></h3>
       <div id="editor-fields"></div>
       <div class="btn-row">
@@ -234,6 +230,7 @@
   <script src="logic.js"></script>
   <script src="db.js"></script>
   <script src="sound.js"></script>
+  <script src="ui.js"></script>
   <script src="wheel.js"></script>
   <script src="app.js"></script>
 </body>

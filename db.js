@@ -113,6 +113,7 @@ const Data = (() => {
         const now = new Date().toISOString();
         await DB.bulkPut("habits", (seed.habits || []).map((h, i) => ({
           id: newId(), name: h.name, emoji: h.emoji, target: h.target || 1,
+          time: h.time || "any", days: h.days || null,
           order: i, created_at: now, archived_at: null,
         })));
         await DB.bulkPut("prizes", (seed.prizes || []).map((p, i) => ({

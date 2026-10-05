@@ -32,18 +32,24 @@
   const activeHabits = (habits) => habits.filter((h) => !h.archived_at).slice().sort(byOrder);
   const targetOf = (h) => Math.max(1, h.target || 1);
 
-  // A habit counts on a given day only if it existed then and was not yet
-  // archived. Without this, adding a habit today would retroactively raise the
-  // bar for past days and silently break a live streak.
+  // 0 = Sunday … 6 = Saturday, read at noon UTC so no timezone can roll it
+  const weekdayOf = (date) => new Date(date + "T12:00:00Z").getUTCDay();
+
+  // A habit with no `days` list runs every day; otherwise only on those weekdays.
+  const scheduledOn = (h, date) => !h.days || !h.days.length || h.days.indexOf(weekdayOf(date)) !== -1;
+
+  const existedOn = (h, date) => {
+    const created = (h.created_at || "").slice(0, 10);
+    const archived = h.archived_at ? h.archived_at.slice(0, 10) : null;
+    return (!created || created <= date) && (!archived || archived > date);
+  };
+
+  // A habit counts on a given day only if it existed then, was not yet
+  // archived, and was scheduled for that weekday. Without the first two, adding
+  // a habit today would retroactively raise the bar for past days and silently
+  // break a live streak.
   function habitsActiveOn(habits, date) {
-    return habits
-      .filter((h) => {
-        const created = (h.created_at || "").slice(0, 10);
-        const archived = h.archived_at ? h.archived_at.slice(0, 10) : null;
-        return (!created || created <= date) && (!archived || archived > date);
-      })
-      .slice()
-      .sort(byOrder);
+    return habits.filter((h) => existedOn(h, date) && scheduledOn(h, date)).slice().sort(byOrder);
   }
 
   const maxPointsForDay = (habits) => habits.reduce((s, h) => s + targetOf(h), 0);
@@ -129,8 +135,22 @@
     return m;
   };
 
+  // A day with nothing scheduled on it — every habit is weekday-only and this
+  // is a weekend, say — asks nothing of you, so it can neither earn nor break a
+  // streak. It is skipped over, not counted as a miss.
+  const isRestDay = (habits, goals, date) =>
+    habitsActiveOn(habits, date).length === 0 && goalsDoneOn(goals, date).length === 0;
+
+  function onlyRestBetween(habits, goals, a, b) {
+    for (let d = shiftDate(a, 1); d < b; d = shiftDate(d, 1)) {
+      if (!isRestDay(habits, goals, d)) return false;
+    }
+    return true;
+  }
+
   // Run lengths keyed by date: for every qualifying day, how many qualifying
-  // days end there consecutively. Non-qualifying days are absent.
+  // days end there consecutively, rest days in between not counting against
+  // it. Non-qualifying days are absent.
   function runLengths(days, habits, goals, settings, today) {
     const map = indexDays(days);
     const dates = activeDates(days, goals, today).filter((date) =>
@@ -138,19 +158,118 @@
     const runs = {};
     let prev = null, run = 0;
     for (const date of dates) {
-      run = prev !== null && daysBetween(prev, date) === 1 ? run + 1 : 1;
+      const joined = prev !== null &&
+        (daysBetween(prev, date) === 1 || onlyRestBetween(habits, goals, prev, date));
+      run = joined ? run + 1 : 1;
       runs[date] = run;
       prev = date;
     }
     return runs;
   }
 
-  // The streak survives an unfinished today: it only breaks once yesterday is
-  // over and unqualified.
+  // The streak survives an unfinished today, and any rest days before it: it
+  // only breaks once a day that asked something of you is over and unqualified.
   function currentStreak(days, habits, goals, settings, today) {
     const runs = runLengths(days, habits, goals, settings, today);
-    return runs[today] || runs[shiftDate(today, -1)] || 0;
+    if (runs[today]) return runs[today];
+    let d = shiftDate(today, -1);
+    for (let i = 0; i < 366 && isRestDay(habits, goals, d); i++) d = shiftDate(d, -1);
+    return runs[d] || 0;
   }
+
+  const bestStreak = (days, habits, goals, settings, today) => {
+    const runs = runLengths(days, habits, goals, settings, today);
+    return Object.keys(runs).reduce((m, k) => Math.max(m, runs[k]), 0);
+  };
+
+  // ---------- per-habit history ----------
+  // Every serious tracker shows each habit's own record. All of this is read
+  // straight from the day records; nothing new is stored.
+
+  const habitCount = (h, map, date) => ((map[date] && map[date].counts[h.id]) || 0);
+  const habitDoneOn = (h, map, date) => habitCount(h, map, date) >= targetOf(h);
+  const habitStart = (h, today) => {
+    const c = (h.created_at || "").slice(0, 10);
+    return c && c <= today ? c : today;
+  };
+  // the days this habit actually asked for, oldest first; today only once done,
+  // so an unfinished today never counts against anything
+  function askedDays(h, map, today) {
+    const out = [];
+    for (let d = habitStart(h, today); d <= today; d = shiftDate(d, 1)) {
+      if (!existedOn(h, d) || !scheduledOn(h, d)) continue;
+      if (d === today && !habitDoneOn(h, map, d)) continue;
+      out.push(d);
+    }
+    return out;
+  }
+
+  function habitStats(h, days, today) {
+    const map = indexDays(days);
+    const asked = askedDays(h, map, today);
+    let best = 0, run = 0, total = 0;
+    for (const d of asked) {
+      if (habitDoneOn(h, map, d)) { run++; total++; best = Math.max(best, run); } else run = 0;
+    }
+    // current: back from the latest asked day, unscheduled days skipped
+    let current = 0;
+    for (let i = asked.length - 1; i >= 0 && habitDoneOn(h, map, asked[i]); i--) current++;
+
+    // 30-day rate over asked days only
+    const from = shiftDate(today, -29);
+    const recent = asked.filter((d) => d >= from);
+    const rate = recent.length ? recent.filter((d) => habitDoneOn(h, map, d)).length / recent.length : 0;
+
+    // Loop Habit Tracker's habit strength: exponential smoothing over every
+    // asked day, partial days counting partially. One miss dents it; it does
+    // not reset it. This is the forgiving number, next to the strict streak.
+    const m = Math.pow(0.5, 1 / 13);
+    let strength = 0;
+    for (const d of asked) strength = strength * m + Math.min(1, habitCount(h, map, d) / targetOf(h)) * (1 - m);
+
+    let completions = 0;
+    for (const d of days) completions += Math.min(targetOf(h), (d.counts && d.counts[h.id]) || 0);
+
+    return { current, best, rate, strength, total, completions };
+  }
+
+  // one cell per day for a contribution-style grid: 0..1 filled, or null where
+  // the habit did not ask for anything that day
+  function habitGrid(h, days, from, to) {
+    const map = indexDays(days);
+    const out = [];
+    for (let d = from; d <= to; d = shiftDate(d, 1)) {
+      const asked = existedOn(h, d) && scheduledOn(h, d);
+      out.push({ date: d, value: asked ? Math.min(1, habitCount(h, map, d) / targetOf(h)) : null });
+    }
+    return out;
+  }
+
+  // ---------- milestones ----------
+
+  const STREAK_MARKS = [3, 7, 14, 30, 66, 100];
+  const REP_MARKS = [10, 50, 100, 250, 500, 1000];
+
+  function milestones({ best, reps, spins, quarters }) {
+    const out = [];
+    for (const n of STREAK_MARKS) {
+      out.push({ id: "streak-" + n, kind: "streak", value: n, label: `${n}-day streak`,
+        earned: best >= n, progress: Math.min(1, best / n) });
+    }
+    for (const n of REP_MARKS) {
+      out.push({ id: "reps-" + n, kind: "reps", value: n, label: `${n} check-ins`,
+        earned: reps >= n, progress: Math.min(1, reps / n) });
+    }
+    out.push({ id: "spin-1", kind: "spin", value: 1, label: "First spin", earned: spins >= 1, progress: Math.min(1, spins) });
+    out.push({ id: "quarter-1", kind: "quarter", value: 1, label: "First big goal", earned: quarters >= 1, progress: Math.min(1, quarters) });
+    return out;
+  }
+
+  // ---------- time of day ----------
+
+  const SLOTS = ["morning", "afternoon", "evening", "any"];
+  const slotOf = (h) => (SLOTS.indexOf(h.time) !== -1 ? h.time : "any");
+  const slotForHour = (hour) => (hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening");
 
   // ---------- tickets ----------
 
@@ -176,12 +295,20 @@
   // Spent tickets are never revoked: a reward already taken stays taken, and
   // its key keeps that date from paying out twice. Tickets from goals are not
   // day-derived, so they are ignored here rather than deleted as unowed.
-  function reconcileTickets(existing, owed) {
+  //
+  // Unspent tickets are only withdrawn from `withdrawFrom` onward — the day you
+  // just un-checked, and the streak days after it that it may have broken.
+  // Without that, editing a habit's target or schedule re-judged history and
+  // quietly took back spins you had already earned. With no date, nothing is
+  // withdrawn: changing a setting can add tickets, never remove them.
+  function reconcileTickets(existing, owed, withdrawFrom) {
     const managed = existing.filter((t) => MANAGED.indexOf(t.reason) !== -1);
     const have = new Set(managed.map(ticketKey));
     const want = new Set(owed.map(ticketKey));
     const toAdd = owed.filter((t) => !have.has(ticketKey(t)));
-    const toDeleteIds = managed.filter((t) => !t.spent_at && !want.has(ticketKey(t))).map((t) => t.id);
+    const toDeleteIds = !withdrawFrom ? [] : managed
+      .filter((t) => !t.spent_at && t.date >= withdrawFrom && !want.has(ticketKey(t)))
+      .map((t) => t.id);
     return { toAdd, toDeleteIds };
   }
 
@@ -203,17 +330,24 @@
     const last = hist[hist.length - 1].from;
     if (last !== "0000-01-01" && daysBetween(last, today) < ADAPT.cooldown) return null;
 
+    // only days that asked something of you are judged; rest days would
+    // otherwise read as misses and drag the bar down for a weekday routine
     const map = indexDays(days);
-    let hit = 0;
+    let hit = 0, eligible = 0;
     for (let i = 1; i <= ADAPT.window; i++) {
       const d = shiftDate(today, -i);
+      if (isRestDay(habits, goals, d)) continue;
+      eligible++;
       if (dayQualifies(map[d] || { date: d, counts: {} }, habits, goals, settings)) hit++;
     }
+    if (eligible < ADAPT.window / 2) return null;
 
     const cur = targetOn(settings, today);
-    const ceiling = maxPointsForDay(activeHabits(habits));
-    if (hit >= ADAPT.up && cur < ceiling) return { from: cur, to: cur + 1, hit, window: ADAPT.window, dir: "up" };
-    if (hit <= ADAPT.down && cur > 1) return { from: cur, to: cur - 1, hit, window: ADAPT.window, dir: "down" };
+    const ceiling = Math.max(...[0, 1, 2, 3, 4, 5, 6].map((k) =>
+      maxPointsForDay(habitsActiveOn(habits, shiftDate(today, k)))));
+    const rate = hit / eligible;
+    if (rate >= ADAPT.up / ADAPT.window && cur < ceiling) return { from: cur, to: cur + 1, hit, window: eligible, dir: "up" };
+    if (rate <= ADAPT.down / ADAPT.window && cur > 1) return { from: cur, to: cur - 1, hit, window: eligible, dir: "down" };
     return null;
   }
 
@@ -400,6 +534,8 @@
   const api = {
     dayNum, daysBetween, shiftDate, todayStr, prettyDate, quarterOf, clamp,
     activeHabits, habitsActiveOn, targetOf, maxPointsForDay, pointsForDay,
+    weekdayOf, scheduledOn, isRestDay, bestStreak, habitStats, habitGrid,
+    milestones, STREAK_MARKS, REP_MARKS, SLOTS, slotOf, slotForHour,
     openGoals, doneGoals, goalsDoneOn, goalTickets,
     targetHistory, targetOn, effectiveTarget, dayStats, dayQualifies,
     activeDates, runLengths, currentStreak,
