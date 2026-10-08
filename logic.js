@@ -77,6 +77,12 @@
   const goalsDoneOn = (goals, date) =>
     goals.filter((g) => g.kind === "week" && g.done_at && g.done_at.slice(0, 10) === date);
   const goalTickets = (g) => Math.max(1, g.tickets || 3);
+  // Steps inside a goal, as in Microsoft To Do: progress you can see, worth
+  // nothing on their own. Only finishing the goal itself pays.
+  const stepProgress = (g) => {
+    const steps = (g && g.steps) || [];
+    return { done: steps.filter((st) => st.done_at).length, total: steps.length };
+  };
 
   // ---------- the bar ----------
 
@@ -563,7 +569,7 @@
     activeHabits, habitsActiveOn, targetOf, maxPointsForDay, pointsForDay,
     weekdayOf, scheduledOn, isRestDay, bestStreak, habitStats, habitGrid,
     milestones, STREAK_MARKS, REP_MARKS, SLOTS, slotOf, slotForHour,
-    openGoals, doneGoals, goalsDoneOn, goalTickets,
+    openGoals, doneGoals, goalsDoneOn, goalTickets, stepProgress,
     targetHistory, targetOn, effectiveTarget, dayStats, dayQualifies,
     activeDates, runLengths, currentStreak,
     ticketsOwed, ticketKey, reconcileTickets, unspentTickets, MANAGED,

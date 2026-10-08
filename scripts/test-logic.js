@@ -126,6 +126,14 @@ assert.strictEqual(G.unspentTickets(withGoal).length, withGoal.length - 1);
 
 assert.strictEqual(G.goalTickets(quarterGoal("q", 3)), 3);
 assert.strictEqual(G.goalTickets({ kind: "quarter" }), 3, "quarterly goals default to three tickets");
+assert.deepStrictEqual(G.stepProgress({ kind: "week" }), { done: 0, total: 0 }, "a goal without steps");
+assert.deepStrictEqual(G.stepProgress({ steps: [{ id: "a", done_at: "2026-10-08T10:00:00Z" }, { id: "b", done_at: null }] }), { done: 1, total: 2 });
+// steps never touch the day: a ticked step on an open goal earns no point
+{
+  const withSteps = Object.assign(weekGoal("s", null), { steps: [{ id: "a", name: "x", done_at: "2026-10-08T10:00:00Z" }] });
+  const st = G.dayStats(day("2026-10-08", {}), [], [withSteps], cfg(1));
+  assert.strictEqual(st.points, 0, "a step is worth nothing");
+}
 assert.strictEqual(G.openGoals([weekGoal("a"), weekGoal("b", "2026-09-01")], "week").length, 1);
 assert.strictEqual(G.doneGoals([weekGoal("a"), weekGoal("b", "2026-09-01")], "week").length, 1);
 

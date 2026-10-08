@@ -22,6 +22,10 @@ no cost.
   An unfinished one costs nothing: it does not raise the day's ceiling.
 - **Quarterly goals** pay tickets outright — 3 by default. They are the big ones,
   so they skip the points economy entirely.
+- Both kinds of goal can have a **description** and **steps**, as in Microsoft To
+  Do. Tap the goal on Today to open them, tap the box to finish the goal. A step
+  gives a spark, a sound and a buzz but no point and no ticket; once every step
+  is done the box pulses.
 - Hit the day's **points target** → 1 ticket.
 - Every **N qualifying days in a row** (default 7) → 1 bonus ticket.
 - A ticket buys one **reveal** (below). Prize odds are per-prize **weights** you

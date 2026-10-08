@@ -2,7 +2,7 @@
 // the ticket show in reveal.js, shared visuals in ui.js.
 "use strict";
 
-const BUILD = "2026-10-08 · reveal";
+const BUILD = "2026-10-08 · steps";
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -30,6 +30,7 @@ const ICON = {
     '-1 1.4-1.6 2.7-1.6 4.2 0 .8.2 1.5.6 2.1-.9-.4-1.6-1.1-2-2C5.6 13.6 5 15 5 16.4 5 19.9 8.1 22 12 22s7-2.4 ' +
     '7-6.2c0-2.6-1.3-4.7-2.9-6.4-.3 1.3-1 2.1-1.9 2.5.7-2.9-.2-6.5-1.6-9.9z"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5.5 12.5 4.2 4.2 8.8-9.4"/></svg>',
+  chev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>',
   trophy: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.5h9v4.2a4.5 4.5 0 0 1-9 0z"/><path d="M7.5 6H4.8a2.7 2.7 0 0 0 2.9 4M16.5 6h2.7a2.7 2.7 0 0 1-2.9 4M12 13.2v3.3M8.5 19.5h7M9.8 16.5h4.4"/></svg>',
   target: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.2"/><circle class="dot" cx="12" cy="12" r="1.4"/></svg>',
   gift: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="9" width="16" height="11" rx="2"/><path d="M3.5 9h17M12 9v11M12 9S10.6 4.5 8.2 5c-2 .4-1.4 4 3.8 4m0 0s1.4-4.5 3.8-4c2 .4 1.4 4-3.8 4"/></svg>',
@@ -318,14 +319,40 @@ async function bump(habit, delta, el) {
 
 // ---------- goals on Today ----------
 
+const openDetail = new Set(); // goals expanded on Today
+
+function goalMeta(g) {
+  const n = Gold.goalTickets(g);
+  const sp = Gold.stepProgress(g);
+  return (g.kind === "quarter" ? `${esc(g.period || Gold.quarterOf(today))} · pays ${n} ticket${n === 1 ? "" : "s"}` : "One-off · 1 point") +
+    (sp.total ? ` · ${sp.done}/${sp.total} steps` : "");
+}
+
+// A goal with a description or steps opens like a To Do task: tap the card to
+// see them, tap the box to finish it.
 function goalCard(g) {
   const big = g.kind === "quarter";
-  const n = Gold.goalTickets(g);
-  return `<div class="goal-card glass${big ? " big" : ""}" data-goal="${g.id}">` +
+  const sp = Gold.stepProgress(g);
+  const rich = !!(g.note || sp.total);
+  const open = rich && openDetail.has(g.id);
+  const cls = (big ? " big" : "") + (open ? " open" : "") + (sp.total && sp.done === sp.total ? " ready" : "");
+  return `<div class="goal-card glass${cls}" data-goal="${g.id}" style="--gp:${sp.total ? sp.done / sp.total : 0}">` +
+    '<div class="goal-head">' +
     `<div class="goal-ico">${esc(g.emoji || (big ? "◆" : "◇"))}</div>` +
-    `<div class="goal-main"><div class="goal-name">${esc(g.name)}</div>` +
-    `<div class="goal-meta">${big ? `${esc(g.period || Gold.quarterOf(today))} · pays ${n} ticket${n === 1 ? "" : "s"}` : "One-off · 1 point"}</div></div>` +
-    `<div class="goal-box">${ICON.check}</div></div>`;
+    `<div class="goal-main"><div class="goal-name">${esc(g.name)}</div><div class="goal-meta">${goalMeta(g)}</div></div>` +
+    (rich ? `<span class="goal-more">${ICON.chev}</span>` : "") +
+    `<button class="goal-box" type="button" aria-label="Finish goal">${ICON.check}</button></div>` +
+    (sp.total ? '<div class="goal-bar"><i></i></div>' : "") +
+    (open ? goalDetail(g) : "") + "</div>";
+}
+
+function goalDetail(g) {
+  return '<div class="goal-detail">' +
+    (g.note ? `<p class="goal-note">${esc(g.note)}</p>` : "") +
+    (g.steps || []).map((st) =>
+      `<button class="step${st.done_at ? " done" : ""}" type="button" data-step="${st.id}">` +
+      `<span class="step-box">${ICON.check}</span><span class="step-name">${esc(st.name)}</span></button>`).join("") +
+    '<button class="linkish goal-edit" type="button">Edit</button></div>';
 }
 
 function renderGoalLists() {
@@ -337,11 +364,51 @@ function renderGoalLists() {
     (week.length ? `<h3 class="section-label">This week</h3>${week.map(goalCard).join("")}` : "") +
     (quarter.length ? `<h3 class="section-label">This quarter</h3>${quarter.map(goalCard).join("")}` : "");
   host.querySelectorAll(".goal-card").forEach((el) => {
-    el.addEventListener("click", () => {
-      const g = goals.find((x) => x.id === el.dataset.goal);
+    const find = () => goals.find((x) => x.id === el.dataset.goal);
+    el.querySelector(".goal-box").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const g = find();
       if (g && !g.done_at) finishGoal(g, el);
     });
+    el.querySelectorAll(".step").forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleStep(find(), b.dataset.step, b, el);
+    }));
+    const edit = el.querySelector(".goal-edit");
+    if (edit) edit.addEventListener("click", (e) => { e.stopPropagation(); const g = find(); if (g) editGoal(g.kind, g); });
+    el.addEventListener("click", () => {
+      const g = find();
+      if (!g || g.done_at) return;
+      if (!el.querySelector(".goal-more")) { finishGoal(g, el); return; }
+      if (openDetail.has(g.id)) openDetail.delete(g.id); else openDetail.add(g.id);
+      Ui.vibrate(5);
+      renderGoalLists();
+    });
   });
+}
+
+// A step is progress you can see and feel, and nothing more: no point, no ticket.
+async function toggleStep(goal, stepId, btn, card) {
+  if (!goal) return;
+  const now = new Date().toISOString();
+  const steps = (goal.steps || []).map((st) => (st.id === stepId ? Object.assign({}, st, { done_at: st.done_at ? null : now }) : st));
+  const rec = Object.assign({}, goal, { steps });
+  await Data.goals.put(rec);
+  goals = goals.map((x) => (x.id === rec.id ? rec : x));
+
+  const done = !!steps.find((st) => st.id === stepId).done_at;
+  const sp = Gold.stepProgress(rec);
+  btn.classList.toggle("done", done);
+  card.style.setProperty("--gp", String(sp.done / sp.total));
+  card.classList.toggle("ready", sp.done === sp.total);
+  card.querySelector(".goal-meta").innerHTML = goalMeta(rec);
+  if (done) {
+    Ui.burst(btn.querySelector(".step-box"), goal.kind === "quarter" ? "#E9B949" : "#3DDC97", 8);
+    Sfx.blip(sp.done / sp.total);
+    Ui.vibrate(8);
+  } else {
+    Ui.vibrate(4);
+  }
 }
 
 // A one-off is worth a point on the day it is finished. A quarterly goal pays
@@ -859,7 +926,8 @@ function renderGoalEditor(kind) {
     if (kind === "quarter") row.style.setProperty("--c1", "#E9B949");
     const sub = g.done_at
       ? `done ${esc(Gold.prettyDate(g.done_at.slice(0, 10)))}`
-      : kind === "quarter" ? `${Gold.goalTickets(g)} tickets · ${esc(g.period || "")}` : "1 point when finished";
+      : (kind === "quarter" ? `${Gold.goalTickets(g)} tickets · ${esc(g.period || "")}` : "1 point when finished") +
+        (Gold.stepProgress(g).total ? ` · ${Gold.stepProgress(g).done}/${Gold.stepProgress(g).total} steps` : "");
     row.innerHTML =
       `<div class="row-emoji">${esc(g.emoji || (kind === "quarter" ? "◆" : "◇"))}</div>` +
       `<div class="row-main"><div class="row-name">${esc(g.name)}</div><div class="row-sub">${sub}</div></div>` +
@@ -879,10 +947,13 @@ function editGoal(kind, g) {
     tickets: 3, period: kind === "quarter" ? Gold.quarterOf(today) : null,
     order: Gold.openGoals(goals, kind).length,
     created_at: new Date().toISOString(), archived_at: null, done_at: null,
+    note: "", steps: [],
   };
   const fields = [
     { key: "name", label: "Name", type: "text", value: goal.name },
     { key: "emoji", label: "Icon", type: "icon", value: goal.emoji, autoFollow: isNew },
+    { key: "note", label: "Description", type: "textarea", value: goal.note || "" },
+    { key: "steps", label: "Steps", type: "steps", value: goal.steps || [] },
   ];
   if (kind === "quarter") {
     fields.push({ key: "tickets", label: "Tickets it pays", type: "stepper", value: Gold.goalTickets(goal), min: 1, max: 20 });
@@ -897,6 +968,8 @@ function editGoal(kind, g) {
       const rec = Object.assign({}, goal, {
         name: v.name.trim(),
         emoji: v.emoji.trim() || (kind === "quarter" ? "◆" : "◇"),
+        note: v.note.trim(),
+        steps: v.steps,
       });
       if (kind === "quarter") {
         rec.tickets = Math.max(1, Number(v.tickets) || 3);
@@ -1054,6 +1127,14 @@ function fieldHtml(f) {
         order.map((d) => `<button type="button" data-v="${d}" class="${on.indexOf(d) !== -1 ? "on" : ""}">${"SMTWTFS"[d]}</button>`).join("") +
         `</div>${hidden(on.join(","))}</div>`;
     }
+    case "textarea":
+      return `<label class="field"><span>${esc(f.label)}</span>` +
+        `<textarea id="ed-${f.key}" rows="3" placeholder="What it means, why it matters">${esc(f.value)}</textarea></label>`;
+    case "steps":
+      return `<div class="field"><span>${esc(f.label)}</span><div class="steps-edit" id="ed-${f.key}">` +
+        f.value.map(stepRowHtml).join("") +
+        '<div class="step-add"><input type="text" placeholder="Add a step" enterkeyhint="done" />' +
+        '<button type="button" class="btn small" aria-label="Add step">+</button></div></div></div>';
     case "stepper":
       return `<div class="field"><span>${esc(f.label)}</span><div class="stepper" data-for="${f.key}" data-min="${f.min || 0}" data-max="${f.max || 99}">` +
         `<button type="button" data-d="-1" aria-label="Less">−</button><output>${esc(f.value)}</output>` +
@@ -1064,6 +1145,21 @@ function fieldHtml(f) {
         (f.min != null ? ` min="${f.min}"` : "") +
         (f.type === "number" ? ' step="1" inputmode="numeric"' : "") + " /></label>";
   }
+}
+
+const stepRowHtml = (st) =>
+  `<div class="step-row" data-id="${esc(st.id)}" data-done="${esc(st.done_at || "")}">` +
+  `<input type="text" value="${esc(st.name)}" /><button type="button" class="step-del" aria-label="Remove step">×</button></div>`;
+
+// Steps in the editor: rows keep their id, so a renamed step stays ticked.
+// Text left in the add box counts as a step too.
+function readSteps(box) {
+  const rows = Array.from(box.querySelectorAll(".step-row")).map((r) => ({
+    id: r.dataset.id, name: r.querySelector("input").value.trim(), done_at: r.dataset.done || null,
+  }));
+  const pending = box.querySelector(".step-add input").value.trim();
+  if (pending) rows.push({ id: Data.newId(), name: pending, done_at: null });
+  return rows.filter((r) => r.name);
 }
 
 function wireControls() {
@@ -1096,6 +1192,25 @@ function wireControls() {
       input.value = Array.from(w.querySelectorAll("button.on")).map((x) => x.dataset.v).join(",");
       Ui.vibrate(5);
     }));
+  });
+  box.querySelectorAll(".steps-edit").forEach((w) => {
+    const input = w.querySelector(".step-add input");
+    const wireRow = (row) => row.querySelector(".step-del").addEventListener("click", () => { row.remove(); Ui.vibrate(5); });
+    w.querySelectorAll(".step-row").forEach(wireRow);
+    const add = () => {
+      const name = input.value.trim();
+      if (!name) return;
+      const tmp = document.createElement("div");
+      tmp.innerHTML = stepRowHtml({ id: Data.newId(), name, done_at: null });
+      const row = tmp.firstChild;
+      w.insertBefore(row, w.querySelector(".step-add"));
+      wireRow(row);
+      input.value = "";
+      input.focus();
+      Ui.vibrate(5);
+    };
+    w.querySelector(".step-add .btn").addEventListener("click", add);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } });
   });
   box.querySelectorAll(".stepper").forEach((w) => {
     const input = $(`#ed-${w.dataset.for}`);
@@ -1161,7 +1276,7 @@ $("#editor-save").addEventListener("click", async () => {
   const v = {};
   editorCtx.fields.forEach((f) => {
     const n = $(`#ed-${f.key}`);
-    v[f.key] = f.type === "checkbox" ? n.checked : n.value;
+    v[f.key] = f.type === "checkbox" ? n.checked : f.type === "steps" ? readSteps(n) : n.value;
   });
   const ok = await editorCtx.onSave(v);
   if (ok !== false) closeEditor();
