@@ -1,8 +1,8 @@
 // Gold — views, rendering, wiring. Rules live in logic.js, storage in db.js,
-// the dial in wheel.js, shared visuals in ui.js.
+// the ticket show in reveal.js, shared visuals in ui.js.
 "use strict";
 
-const BUILD = "2026-10-05 · redesign";
+const BUILD = "2026-10-08 · reveal";
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -20,8 +20,7 @@ let viewDate = today;     // the day Today is showing; any of the last seven
 let monthCursor = null;   // "YYYY-MM" on the Progress calendar
 
 let ticketQueue = [];
-let wheelPrizes = [];
-let pendingWin = null;
+let rewardPrizes = [];
 
 const ICON = {
   ticket: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">' +
@@ -83,8 +82,8 @@ function scheduleText(h) {
 // ---------- views ----------
 
 function showView(name) {
-  // leaving mid-spin would rebuild the wheel under the animation and strand it
-  if (Wheel.isSpinning()) return;
+  // the show covers the dock, but a stray tap must not rebuild what it reads
+  if (Reveal.isPlaying()) return;
   document.querySelectorAll(".view").forEach((v) => (v.hidden = true));
   const view = $(`#view-${name}`);
   view.hidden = false;
@@ -96,12 +95,12 @@ function showView(name) {
     renderToday();
   }
   if (name === "progress") renderProgress();
-  if (name === "wheel") renderWheel();
+  if (name === "wheel") renderRewards();
   if (name === "settings") renderSettings();
   window.scrollTo(0, 0);
   Ui.rise(view);
 }
-document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => { Wheel.vibrate(5); showView(t.dataset.view); }));
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => { Ui.vibrate(5); showView(t.dataset.view); }));
 
 function renderBadge() {
   document.querySelector('.tab[data-view="wheel"]').classList.toggle("badge", unspent().length > 0);
@@ -116,7 +115,7 @@ function renderToday() {
   renderSections();
   renderGoalLists();
   $("#today-hint").textContent = viewDate === today ? ""
-    : `Changes count for ${Gold.prettyDate(viewDate)}, and earn that day's spin.`;
+    : `Changes count for ${Gold.prettyDate(viewDate)}, and earn that day's ticket.`;
   renderBadge();
 }
 
@@ -147,7 +146,7 @@ function renderWeekStrip() {
   host.querySelectorAll(".wday").forEach((b) => b.addEventListener("click", () => {
     if (b.dataset.date === viewDate) return;
     viewDate = b.dataset.date;
-    Wheel.vibrate(6);
+    Ui.vibrate(6);
     heroFor = null;
     renderToday();
   }));
@@ -176,7 +175,7 @@ function renderHero() {
       `<button class="hstat streak" type="button" data-go="progress"><span class="hstat-ico">${ICON.flame}</span>` +
       '<span><span class="hstat-num" data-v="0">0</span><span class="hstat-label">day streak</span></span></button>' +
       `<button class="hstat tickets" type="button" data-go="wheel"><span class="hstat-ico">${ICON.ticket}</span>` +
-      '<span><span class="hstat-num" data-v="0">0</span><span class="hstat-label">spins ready</span></span></button></div>';
+      '<span><span class="hstat-num" data-v="0">0</span><span class="hstat-label">tickets ready</span></span></button></div>';
     hero.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => showView(b.dataset.go)));
     fillRings(hero);
   } else {
@@ -185,7 +184,7 @@ function renderHero() {
   }
   Ui.countTo(hero.querySelector(".hero-num"), st.points);
   hero.querySelector(".hero-of").textContent = !st.max ? "nothing scheduled"
-    : won ? "spin earned" : `of ${st.target} for a spin`;
+    : won ? "ticket earned" : `of ${st.target} for a ticket`;
   hero.classList.toggle("won", won);
   hero.style.setProperty("--won", won ? "1" : "0");
   const [sEl, tEl] = hero.querySelectorAll(".hstat-num");
@@ -293,10 +292,10 @@ async function bump(habit, delta, el) {
 
   const st = statsOn(date);
   if (next > cur) {
-    Wheel.vibrate(next >= t ? [0, 18, 40, 26] : 12);
+    Ui.vibrate(next >= t ? [0, 18, 40, 26] : 12);
     Sfx.blip(st.target ? st.points / st.target : 0);
   } else {
-    Wheel.vibrate(6);
+    Ui.vibrate(6);
     Sfx.thunk();
   }
   if (el) {
@@ -325,7 +324,7 @@ function goalCard(g) {
   return `<div class="goal-card glass${big ? " big" : ""}" data-goal="${g.id}">` +
     `<div class="goal-ico">${esc(g.emoji || (big ? "◆" : "◇"))}</div>` +
     `<div class="goal-main"><div class="goal-name">${esc(g.name)}</div>` +
-    `<div class="goal-meta">${big ? `${esc(g.period || Gold.quarterOf(today))} · pays ${n} spin${n === 1 ? "" : "s"}` : "One-off · 1 point"}</div></div>` +
+    `<div class="goal-meta">${big ? `${esc(g.period || Gold.quarterOf(today))} · pays ${n} ticket${n === 1 ? "" : "s"}` : "One-off · 1 point"}</div></div>` +
     `<div class="goal-box">${ICON.check}</div></div>`;
 }
 
@@ -356,7 +355,7 @@ async function finishGoal(goal, el) {
     el.classList.add("done");
     Ui.burst(el.querySelector(".goal-box"), goal.kind === "quarter" ? "#E9B949" : "#3DDC97", 16);
   }
-  Wheel.vibrate(goal.kind === "quarter" ? [0, 40, 60, 40, 60, 120] : [0, 16, 40, 22]);
+  Ui.vibrate(goal.kind === "quarter" ? [0, 40, 60, 40, 60, 120] : [0, 16, 40, 22]);
 
   let announce = [];
   if (goal.kind === "quarter") {
@@ -484,7 +483,7 @@ function monthHtml() {
     `</div></div><div class="month-grid">${cells.join("")}</div>` +
     '<div class="legend"><span><i style="background:color-mix(in oklab,#8B7CFF 55%,transparent)"></i>Some</span>' +
     '<span><i style="background:linear-gradient(140deg,#9C8CFF,#4CC9FF)"></i>All done</span>' +
-    '<span><i style="box-shadow:inset 0 0 0 1.5px #E9B949"></i>Spin earned</span></div>';
+    '<span><i style="box-shadow:inset 0 0 0 1.5px #E9B949"></i>Ticket earned</span></div>';
 }
 
 function wireMonth(root) {
@@ -495,13 +494,13 @@ function wireMonth(root) {
     const box = root.querySelector(".month");
     box.innerHTML = monthHtml();
     wireMonth(root);
-    Wheel.vibrate(5);
+    Ui.vibrate(5);
   }));
 }
 
 function medalsHtml(list) {
   const tier = { streak: "gold", reps: "plat", spin: "rose", quarter: "iris" };
-  const unit = { streak: "DAYS", reps: "REPS", spin: "SPIN", quarter: "GOAL" };
+  const unit = { streak: "DAYS", reps: "REPS", spin: "DRAW", quarter: "GOAL" };
   // earned first, then the nearest to being earned
   const sorted = list.slice().sort((a, b) => (b.earned - a.earned) || (b.progress - a.progress));
   return sorted.map((m) =>
@@ -579,10 +578,10 @@ function showNextTicket() {
   card.classList.toggle("streak", streak);
   card.classList.toggle("goal", goal);
   card.querySelector(".ticket-stub").innerHTML = streak ? ICON.flame : ICON.ticket;
-  $("#ticket-kicker").textContent = goal ? "GOAL COMPLETE" : streak ? "STREAK BONUS" : "SPIN EARNED";
+  $("#ticket-kicker").textContent = goal ? "GOAL COMPLETE" : streak ? "STREAK BONUS" : "TICKET EARNED";
   $("#ticket-title").textContent = goal
-    ? `${t.count} spins`
-    : streak ? "Bonus spin" : "One spin of the wheel";
+    ? `${t.count} tickets`
+    : streak ? "Bonus ticket" : "One ticket";
   $("#ticket-sub").textContent = goal
     ? t.goal
     : streak
@@ -596,7 +595,7 @@ function showNextTicket() {
     void n.offsetWidth;
     n.style.animation = "";
   });
-  Wheel.vibrate([0, 30, 70, 30, 70, 60]);
+  Ui.vibrate([0, 30, 70, 30, 70, 60]);
 }
 
 $("#ticket-later").addEventListener("click", showNextTicket);
@@ -606,64 +605,70 @@ $("#ticket-spin").addEventListener("click", () => {
   showView("wheel");
 });
 
-// ---------- rewards: the dial and the vault ----------
+// ---------- rewards: the core, the pool and the vault ----------
 
-function renderWheel() {
-  wheelPrizes = activePrizes();
-  Wheel.render($("#wheel-host"), wheelPrizes);
+const TIER_ORDER = ["legendary", "epic", "rare", "common", "blank"];
+
+function renderRewards() {
+  rewardPrizes = activePrizes();
+  const mine = unspent();
+  const weighted = Gold.totalWeight(rewardPrizes) > 0;
+
+  const core = Reveal.idle($("#reward-core"), mine.length);
+  core.classList.toggle("empty", mine.length === 0 || !weighted);
+  core.addEventListener("click", startReveal);
 
   const strip = $("#ticket-strip");
-  const mine = unspent();
   const stub = (t) => {
     const cls = t.reason === "streak" ? " streak" : t.reason === "goal" ? " goal" : "";
     return `<span class="stub${cls}">${t.reason === "streak" ? ICON.flame : ICON.ticket} ${esc(Gold.prettyDate(t.date))}</span>`;
   };
   strip.innerHTML = mine.length === 0
-    ? '<span class="hint">No tickets yet</span>'
+    ? ""
     : mine.slice(0, 2).map(stub).join("") + (mine.length > 2 ? `<span class="stub">+${mine.length - 2} more</span>` : "");
 
-  const weighted = Gold.totalWeight(wheelPrizes) > 0;
   const btn = $("#spin-btn");
   btn.disabled = mine.length === 0 || !weighted;
-  btn.textContent = mine.length === 0 ? "No tickets" : `Spin · ${mine.length}`;
+  btn.textContent = mine.length === 0 ? "No tickets" : "Use a ticket";
   $("#wheel-hint").textContent = !weighted
     ? "Add prizes with a weight above zero in Settings."
     : mine.length === 0
-      ? `Hit ${effTargetToday()} points in a day to earn a spin.`
-      : "Flick the dial, or tap Spin.";
+      ? `Hit ${effTargetToday()} points in a day to earn a ticket.`
+      : "Hold the screen during the show to speed it up.";
 
-  $("#odds-list").innerHTML = wheelPrizes.map((p) => {
-    const c = p.blank ? "#55525F" : Wheel.luminous(p.color, 66);
-    return '<div class="odds-row">' +
-      `<span class="swatch" style="background:${c};color:${c}"></span>` +
-      `<span class="odds-name">${esc(p.emoji || "")} ${esc(p.name)}</span>` +
-      `<span class="odds-pct">${Gold.probabilityFor(p, wheelPrizes).toFixed(1)}%</span></div>`;
+  // the pool, rarest first, so the odds read as a ladder
+  const groups = TIER_ORDER.map((t) => ({ t, list: rewardPrizes.filter((p) => p.weight > 0 && Gold.rarityOf(p, rewardPrizes) === t) }))
+    .filter((g) => g.list.length);
+  $("#odds-list").innerHTML = groups.map((g) => {
+    const pct = g.list.reduce((a, p) => a + Gold.probabilityFor(p, rewardPrizes), 0);
+    return `<div class="odds-tier t-${g.t}" style="--cc:${Reveal.TIER[g.t].c}">` +
+      `<span class="tier-chip">${Reveal.TIER[g.t].label}</span><span class="odds-pct">${pct.toFixed(0)}%</span></div>` +
+      g.list.map((p) => '<div class="odds-row">' +
+        `<span class="odds-emoji">${esc(p.emoji || "")}</span>` +
+        `<span class="odds-name">${esc(p.name)}</span>` +
+        `<span class="odds-pct">${Gold.probabilityFor(p, rewardPrizes).toFixed(1)}%</span></div>`).join("");
   }).join("");
   renderVault();
   renderBadge();
 }
 
-// One entry point for the button and for a flick on the wheel itself. Returns
-// false when there is nothing to spend, so a flick just runs down instead.
-function startSpin(opts) {
-  if (Wheel.isSpinning()) return false;
+function startReveal() {
+  if (Reveal.isPlaying()) return;
   const ticket = unspent().sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
-  const draw = Gold.drawPrize(wheelPrizes);
-  if (!ticket || !draw) return false;
-  runSpin(ticket, draw, opts || {});
-  return true;
+  const draw = Gold.drawPrize(rewardPrizes);
+  if (!ticket || !draw) return;
+  Sfx.unlock();
+  runReveal(ticket, draw);
 }
-$("#spin-btn").addEventListener("click", () => startSpin({}));
-Wheel.setLaunchHandler(startSpin);
+$("#spin-btn").addEventListener("click", startReveal);
 
-async function runSpin(ticket, draw, opts) {
-  const blank = !!draw.prize.blank;
+async function runReveal(ticket, draw) {
   const at = new Date().toISOString();
 
-  // Persisted before the animation: if the app dies mid-spin the ticket is
-  // spent and the prize is already in the vault, never the other way round.
+  // Persisted before the show: if the app dies mid-reveal the ticket is spent
+  // and the prize is already in the vault, never the other way round.
   let win = null;
-  if (!blank) {
+  if (!draw.prize.blank) {
     win = {
       id: Data.newId(),
       prize_name: draw.prize.name,
@@ -679,50 +684,19 @@ async function runSpin(ticket, draw, opts) {
   await Data.tickets.put(spentTicket);
   tickets = tickets.map((t) => (t.id === ticket.id ? spentTicket : t));
 
-  $("#spin-btn").disabled = true;
-  $("#ticket-strip").innerHTML = "";
-  pendingWin = win;
-  Wheel.spin(draw.index, () => {
-    const card = $("#win-card");
-    card.classList.toggle("blank", blank);
-    $("#win-overlay").classList.toggle("blank", blank);
-    if (blank) {
-      $("#win-kicker").textContent = "NOTHING THIS TIME";
-      $("#win-emoji").textContent = "—";
-      $("#win-name").textContent = draw.prize.name || "No luck";
-      card.style.removeProperty("--wc");
-      const left = unspent().length;
-      $("#win-sub").textContent = left ? `${left} spin${left === 1 ? "" : "s"} left.` : "That was your last spin.";
-      $("#win-sub").hidden = false;
-      $("#win-ok").textContent = "Fine";
-    } else {
-      Wheel.burst(draw.prize.color);
-      $("#win-kicker").textContent = "YOU WON";
-      $("#win-emoji").textContent = draw.prize.emoji || "🎁";
-      $("#win-name").textContent = draw.prize.name;
-      card.style.setProperty("--wc", Wheel.luminous(draw.prize.color, 62));
-      $("#win-sub").hidden = true;
-      $("#win-ok").textContent = "Add to vault";
-    }
-    $("#win-overlay").hidden = false;
-  }, { blank, flick: !!opts.flick });
+  await Reveal.play({ prizes: rewardPrizes, index: draw.index });
+  renderRewards();
 }
-
-$("#win-ok").addEventListener("click", () => {
-  $("#win-overlay").hidden = true;
-  pendingWin = null;
-  renderWheel();
-});
 
 function renderVault() {
   const open = wins.filter((w) => !w.redeemed_at).sort((a, b) => b.won_at.localeCompare(a.won_at));
   const used = wins.filter((w) => w.redeemed_at).sort((a, b) => b.redeemed_at.localeCompare(a.redeemed_at));
-  const pc = (w) => Wheel.luminous(w.prize_color || "#E9B949", 64);
+  const pc = (w) => Ui.luminous(w.prize_color || "#E9B949", 64);
 
   const host = $("#vault-open");
   host.innerHTML = "";
   if (open.length === 0) {
-    host.innerHTML = '<p class="empty">Nothing waiting. Win something on the wheel.</p>';
+    host.innerHTML = '<p class="empty">Nothing waiting. Use a ticket to win something.</p>';
   }
   for (const w of open) {
     const card = document.createElement("div");
@@ -737,7 +711,7 @@ function renderVault() {
       const upd = Object.assign({}, w, { redeemed_at: new Date().toISOString() });
       await Data.wins.put(upd);
       wins = wins.map((x) => (x.id === w.id ? upd : x));
-      Wheel.vibrate([0, 14, 40, 20]);
+      Ui.vibrate([0, 14, 40, 20]);
       Ui.burst(card.querySelector(".prize-emoji"), pc(w), 14);
       setTimeout(renderVault, 450);
     });
@@ -885,7 +859,7 @@ function renderGoalEditor(kind) {
     if (kind === "quarter") row.style.setProperty("--c1", "#E9B949");
     const sub = g.done_at
       ? `done ${esc(Gold.prettyDate(g.done_at.slice(0, 10)))}`
-      : kind === "quarter" ? `${Gold.goalTickets(g)} spins · ${esc(g.period || "")}` : "1 point when finished";
+      : kind === "quarter" ? `${Gold.goalTickets(g)} tickets · ${esc(g.period || "")}` : "1 point when finished";
     row.innerHTML =
       `<div class="row-emoji">${esc(g.emoji || (kind === "quarter" ? "◆" : "◇"))}</div>` +
       `<div class="row-main"><div class="row-name">${esc(g.name)}</div><div class="row-sub">${sub}</div></div>` +
@@ -911,7 +885,7 @@ function editGoal(kind, g) {
     { key: "emoji", label: "Icon", type: "icon", value: goal.emoji, autoFollow: isNew },
   ];
   if (kind === "quarter") {
-    fields.push({ key: "tickets", label: "Spins it pays", type: "stepper", value: Gold.goalTickets(goal), min: 1, max: 20 });
+    fields.push({ key: "tickets", label: "Tickets it pays", type: "stepper", value: Gold.goalTickets(goal), min: 1, max: 20 });
     fields.push({ key: "period", label: "Quarter", type: "text", value: goal.period || Gold.quarterOf(today) });
   }
   openEditor({
@@ -975,7 +949,7 @@ function renderPrizesEditor() {
   host.innerHTML = "";
   if (list.length === 0) host.innerHTML = '<p class="hint">No prizes yet.</p>';
   for (const p of list) {
-    const c = p.blank ? "#55525F" : Wheel.luminous(p.color, 66);
+    const c = p.blank ? "#55525F" : Ui.luminous(p.color, 66);
     const row = document.createElement("div");
     row.className = "row";
     row.style.display = "block";
@@ -1018,6 +992,8 @@ function editPrize(p) {
       { key: "emoji", label: "Icon", type: "icon", value: prize.emoji, autoFollow: isNew },
       { key: "color", label: "Colour", type: "swatches", value: prize.color },
       { key: "weight", label: "Weight (higher = more likely)", type: "number", value: prize.weight, min: 0 },
+      { key: "rarity", label: "Rarity", type: "segmented", value: prize.rarity || "auto",
+        options: ["auto", "common", "rare", "epic", "legendary"].map((v) => ({ v, label: v === "auto" ? "Auto" : Reveal.TIER[v].label })) },
       { key: "blank", label: "Wins nothing", type: "checkbox", value: !!prize.blank },
     ],
     canDelete: !isNew,
@@ -1026,6 +1002,7 @@ function editPrize(p) {
       const rec = Object.assign({}, prize, {
         name: v.name.trim(), emoji: v.emoji.trim(), color: v.color || prize.color,
         weight: Math.max(0, Number(v.weight) || 0),
+        rarity: v.rarity === "auto" ? null : v.rarity,
         blank: !!v.blank,
       });
       await Data.prizes.put(rec);
@@ -1099,7 +1076,7 @@ function wireControls() {
       w.querySelectorAll(".swatch-btn").forEach((x) => x.classList.toggle("on", x === b));
       input.value = b.dataset.v;
       sheet.style.setProperty("--c1", b.dataset.v);
-      Wheel.vibrate(6);
+      Ui.vibrate(6);
     }));
   });
   box.querySelectorAll(".segmented").forEach((w) => {
@@ -1107,7 +1084,7 @@ function wireControls() {
     w.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
       w.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
       input.value = b.dataset.v;
-      Wheel.vibrate(5);
+      Ui.vibrate(5);
     }));
   });
   box.querySelectorAll(".weekdays").forEach((w) => {
@@ -1117,7 +1094,7 @@ function wireControls() {
       if (b.classList.contains("on") && on.length === 1) return; // at least one day
       b.classList.toggle("on");
       input.value = Array.from(w.querySelectorAll("button.on")).map((x) => x.dataset.v).join(",");
-      Wheel.vibrate(5);
+      Ui.vibrate(5);
     }));
   });
   box.querySelectorAll(".stepper").forEach((w) => {
@@ -1127,7 +1104,7 @@ function wireControls() {
       const v = Math.min(Number(w.dataset.max), Math.max(Number(w.dataset.min), Number(input.value) + Number(b.dataset.d)));
       input.value = String(v);
       out.textContent = String(v);
-      Wheel.vibrate(5);
+      Ui.vibrate(5);
     }));
   });
 }

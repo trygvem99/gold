@@ -71,6 +71,25 @@ const Ui = (() => {
     }
   }
 
+  const vibrate = (p) => { try { navigator.vibrate && navigator.vibrate(p); } catch (e) { /* unsupported */ } };
+
+  // Any stored colour, however muddy, rendered as light: force saturation up
+  // and lightness into the band where it reads as glow.
+  function luminous(hex, l) {
+    const n = parseInt(String(hex || "#888").replace("#", ""), 16);
+    const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0;
+    const d = max - min;
+    if (d) {
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h = (h * 60 + 360) % 360;
+    }
+    return `hsl(${h.toFixed(0)} 82% ${(l == null ? 66 : l)}%)`;
+  }
+
   // ---------- counters ----------
   function countTo(el, to, ms) {
     if (!el) return;
@@ -116,5 +135,5 @@ const Ui = (() => {
     });
   }
 
-  return { PALETTE, tipFor, mix, ring, setRing, burst, countTo, grain, rise, REDUCED };
+  return { PALETTE, tipFor, mix, ring, setRing, burst, vibrate, luminous, countTo, grain, rise, REDUCED };
 })();

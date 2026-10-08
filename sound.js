@@ -151,6 +151,153 @@ const Sfx = (() => {
     tone(196, t + 0.14, 0.22, 0.55, "sine", 155.56);
   }
 
+  // ---------- the reveal ----------
+  // Each tier has a root, so every cue for a tier sits in the same key and the
+  // steps of the charge climb audibly: silver, blue, purple, gold.
+  const ROOT = { blank: 196, common: 392, rare: 466.16, epic: 554.37, legendary: 659.25 };
+  const chord = (f) => [f, f * 1.25, f * 1.5];
+  let riser = null;
+
+  function shimmer(t, peak, len, from, to) {
+    const c = ac(); if (!c) return;
+    const src = c.createBufferSource();
+    src.buffer = noise;
+    const hp = c.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.setValueAtTime(from, t);
+    hp.frequency.exponentialRampToValueAtTime(to, t + len);
+    const g = c.createGain();
+    env(g, t, peak, 0.04, len);
+    src.connect(hp).connect(g).connect(master);
+    src.start(t);
+    src.stop(t + len + 0.1);
+  }
+
+  // The ticket seating: a click with a body under it.
+  function insert() {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime;
+    peg(0.2);
+    tone(220, t, 0.26, 0.18, "triangle", 150);
+    tone(1320, t + 0.03, 0.05, 0.25, "sine");
+  }
+
+  // A held, detuned pair under a filter that opens as the charge builds.
+  function riserStart() {
+    const c = ac(); if (!c) return;
+    riserStop();
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 300;
+    lp.Q.value = 6;
+    const g = c.createGain();
+    g.gain.value = 0.0001;
+    const os = [110, 110.7, 220.4].map((f) => {
+      const o = c.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.value = f;
+      o.connect(lp);
+      o.start();
+      return o;
+    });
+    lp.connect(g).connect(master);
+    riser = { os, lp, g, base: [110, 110.7, 220.4] };
+  }
+  function riserSet(p) {
+    if (!riser || !ctx) return;
+    const t = ctx.currentTime;
+    riser.lp.frequency.setTargetAtTime(300 + p * 2600, t, 0.08);
+    riser.g.gain.setTargetAtTime(p > 0 ? 0.02 + p * 0.07 : 0.0001, t, 0.08);
+    riser.os.forEach((o, i) => o.frequency.setTargetAtTime(riser.base[i] * (1 + p * 0.5), t, 0.1));
+  }
+  function riserStop() {
+    if (!riser) return;
+    const r = riser;
+    riser = null;
+    try {
+      r.g.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.06);
+      r.os.forEach((o) => o.stop(ctx.currentTime + 0.4));
+    } catch (e) { /* already stopped */ }
+  }
+
+  // One step of the charge: a bell in the tier's key.
+  function tell(tier) {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime;
+    const f = ROOT[tier] || ROOT.common;
+    tone(f * 2, t, 0.20, 0.9, "sine");
+    tone(f * 3, t, 0.06, 0.6, "sine");
+    tone(f, t, 0.10, 0.5, "triangle");
+  }
+
+  // The charge lands on its colour.
+  function flash(tier) {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime;
+    const f = ROOT[tier] || ROOT.common;
+    chord(f).forEach((n, i) => tone(n, t + i * 0.03, 0.14, 1.2, "triangle"));
+    tone(f / 4, t, 0.34, 0.9, "sine", f / 5);
+    shimmer(t, 0.08, 1.0, 3000, 9000);
+  }
+
+  // The core folding into a line.
+  function collapse() {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime;
+    tone(880, t, 0.10, 0.35, "sine", 180);
+    shimmer(t, 0.06, 0.35, 8000, 1500);
+  }
+
+  // The reel landing a tier above the charge.
+  function bloom(tier) {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime;
+    const f = ROOT[tier] || ROOT.common;
+    chord(f * 2).forEach((n, i) => tone(n, t + i * 0.06, 0.16, 1.0, "triangle"));
+    shimmer(t, 0.1, 1.2, 2500, 10000);
+  }
+
+  // The card rising out of the strip.
+  function lift() {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime;
+    tone(330, t, 0.08, 1.0, "sine", 660);
+    shimmer(t, 0.04, 1.0, 1500, 6000);
+  }
+
+  function flip() {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime;
+    const src = c.createBufferSource();
+    src.buffer = noise;
+    const bp = c.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.setValueAtTime(900, t);
+    bp.frequency.exponentialRampToValueAtTime(4000, t + 0.18);
+    const g = c.createGain();
+    env(g, t, 0.22, 0.02, 0.2);
+    src.connect(bp).connect(g).connect(master);
+    src.start(t);
+    src.stop(t + 0.3);
+  }
+
+  // The prize. Bigger for rarer; a blank gets a short fall.
+  function fanfare(tier) {
+    if (tier === "blank") return blank();
+    const c = ac(); if (!c) return;
+    const t = c.currentTime;
+    const f = ROOT[tier];
+    const big = tier === "legendary" ? 3 : tier === "epic" ? 2 : tier === "rare" ? 1 : 0;
+    tone(f / 8, t, 0.42, 1.0 + big * 0.4, "sine", f / 10);
+    const run = [1, 1.25, 1.5, 2, 2.5, 3, 4].slice(0, 3 + big);
+    run.forEach((m, i) => {
+      tone(f * m, t + 0.06 + i * 0.07, 0.2, 0.9 + big * 0.2, "triangle");
+      tone(f * m * 2, t + 0.06 + i * 0.07, 0.05, 0.6, "sine");
+    });
+    if (big >= 2) chord(f * 2).forEach((n) => tone(n, t + 0.1 + run.length * 0.07, 0.12, 1.8, "triangle"));
+    shimmer(t + 0.05, 0.06 + big * 0.03, 1.0 + big * 0.4, 2000, 9000);
+  }
+
   function earned(streak) {
     const c = ac(); if (!c) return;
     const t = c.currentTime;
@@ -183,6 +330,7 @@ const Sfx = (() => {
   return {
     unlock: ac, peg, whooshStart, whooshSet, whooshStop,
     tension, clunk, win, blank, earned, blip, thunk,
+    insert, riserStart, riserSet, riserStop, tell, flash, collapse, bloom, lift, flip, fanfare,
     setMuted, isMuted: () => muted,
   };
 })();

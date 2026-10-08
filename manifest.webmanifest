@@ -1,7 +1,7 @@
 {
   "name": "Gold",
   "short_name": "Gold",
-  "description": "Daily habits, earned tickets, a wheel worth spinning",
+  "description": "Daily habits, earned tickets, a prize worth the wait",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

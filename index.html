@@ -67,7 +67,7 @@
       <div id="progress-root"></div>
     </section>
 
-    <!-- REWARDS: the wheel and the vault -->
+    <!-- REWARDS: the core, the pool and the vault -->
     <section id="view-wheel" class="view" hidden>
       <header class="page-head" data-rise>
         <div>
@@ -75,12 +75,11 @@
           <h1 class="page-title">Rewards</h1>
         </div>
       </header>
+      <div class="reward-stage" id="reward-core"></div>
       <div class="ticket-strip" id="ticket-strip"></div>
-      <div class="wheel-stage">
-        <div id="wheel-host"></div>
-      </div>
-      <button class="btn spin-btn" id="spin-btn" type="button">Spin</button>
+      <button class="btn spin-btn" id="spin-btn" type="button">Use a ticket</button>
       <p class="hint center" id="wheel-hint"></p>
+      <h3 class="section-label">What a ticket can win</h3>
       <div class="odds glass" id="odds-list"></div>
 
       <h3 class="section-label" id="vault-head">Your rewards</h3>
@@ -121,12 +120,12 @@
       <div class="card glass" data-rise>
         <h3>The deal</h3>
         <label class="field">
-          <span>Points needed for a spin</span>
+          <span>Points needed for a ticket</span>
           <input type="number" id="set-target" min="1" step="1" inputmode="numeric" />
         </label>
         <p class="hint" id="target-hint"></p>
         <label class="field">
-          <span>Bonus spin every N days in a row</span>
+          <span>Bonus ticket every N days in a row</span>
           <input type="number" id="set-streak" min="2" step="1" inputmode="numeric" />
         </label>
         <label class="field">
@@ -147,7 +146,7 @@
       <div class="card glass" data-rise>
         <h3>Sound</h3>
         <label class="field">
-          <span>Wheel and habit sounds</span>
+          <span>Reward and habit sounds</span>
           <input type="checkbox" id="set-sound" class="switch" />
         </label>
       </div>
@@ -173,7 +172,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16" opacity="0.5" /><path d="M6.5 16v-4M11.2 16V7.5M15.8 16v-6M20 16V5" stroke-width="2" /></svg><span>Progress</span>
     </button>
     <button data-view="wheel" class="tab" type="button">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 12V3.5M12 12l7.4 4.3M12 12l-7.4 4.3" /><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg><span>Rewards</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 4h11l3.5 5-9 11L3 9z" /><path d="M3 9h18M9.5 4 8 9l4 11 4-11-1.5-5" opacity="0.5" /></svg><span>Rewards</span>
     </button>
     <button data-view="settings" class="tab" type="button">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h6.5M15 7.5h5M4 16.5h4.5M13 16.5h7M4 12h11.5M20 12h0.5" /><circle cx="12.8" cy="7.5" r="2.3" /><circle cx="10.8" cy="16.5" r="2.3" /><circle cx="17.8" cy="12" r="2.3" /></svg><span>Settings</span>
@@ -186,29 +185,16 @@
       <div class="ticket" id="ticket-card">
         <div class="ticket-stub"></div>
         <div class="ticket-body">
-          <div class="ticket-kicker" id="ticket-kicker">SPIN EARNED</div>
-          <div class="ticket-title" id="ticket-title">One spin of the wheel</div>
+          <div class="ticket-kicker" id="ticket-kicker">TICKET EARNED</div>
+          <div class="ticket-title" id="ticket-title">One ticket</div>
           <div class="ticket-sub" id="ticket-sub"></div>
         </div>
         <div class="shimmer" aria-hidden="true"></div>
       </div>
       <div class="btn-row center">
-        <button class="btn primary" id="ticket-spin" type="button">Spin now</button>
+        <button class="btn primary" id="ticket-spin" type="button">Use it now</button>
         <button class="btn" id="ticket-later" type="button">Later</button>
       </div>
-    </div>
-  </div>
-
-  <!-- prize won -->
-  <div class="overlay" id="win-overlay" hidden>
-    <div class="win-scene">
-      <div class="win-kicker" id="win-kicker">YOU WON</div>
-      <div class="win-card" id="win-card">
-        <div class="win-emoji" id="win-emoji"></div>
-        <div class="win-name" id="win-name"></div>
-      </div>
-      <p class="hint center" id="win-sub" hidden></p>
-      <button class="btn primary" id="win-ok" type="button">Add to vault</button>
     </div>
   </div>
 
@@ -225,13 +211,11 @@
     </div>
   </div>
 
-  <canvas id="confetti" aria-hidden="true"></canvas>
-
   <script src="logic.js"></script>
   <script src="db.js"></script>
   <script src="sound.js"></script>
   <script src="ui.js"></script>
-  <script src="wheel.js"></script>
+  <script src="reveal.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

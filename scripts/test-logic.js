@@ -205,43 +205,82 @@ for (let i = 0; i < N; i++) hits[G.drawPrize(prizes).index]++;
   assert.ok(Math.abs(got - expected) < 0.01, `prize ${i}: ${got.toFixed(3)} vs ${expected}`);
 });
 
-// ---------- wheel geometry ----------
-const angles = G.segmentAngles(prizes);
-assert.ok(Math.abs(angles[angles.length - 1].end - 360) < 1e-9, "segments fill the circle");
-assert.ok(Math.abs(angles[0].end - 36) < 1e-9);
-assert.strictEqual(G.segmentAt(angles, 0), 0);
-assert.strictEqual(G.segmentAt(angles, 100), 1);
-assert.strictEqual(G.segmentAt(angles, 359.9), 2);
+// a small seeded generator, so the randomised rules can be checked exactly
+const seeded = (seed) => () => {
+  seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
 
-for (let i = 0; i < prizes.length; i++) {
+// ---------- rarity ----------
+// the pool as it stands on the phone: 6, 10, 24, 28, 16 and a 16 % blank
+const pool = [
+  { id: "night", weight: 3 }, { id: "dinner", weight: 5 }, { id: "cheat", weight: 12 },
+  { id: "bakery", weight: 14 }, { id: "cinema", weight: 8 }, { id: "none", weight: 8, blank: true },
+];
+assert.deepStrictEqual(pool.map((p) => G.rarityOf(p, pool)),
+  ["legendary", "epic", "common", "common", "rare", "blank"]);
+assert.strictEqual(G.rarityOf(Object.assign({}, pool[2], { rarity: "epic" }), pool), "epic", "a hand-set tier wins");
+assert.strictEqual(G.rarityOf(Object.assign({}, pool[2], { rarity: "auto" }), pool), "common", "anything else means auto");
+assert.strictEqual(G.rarityOf(Object.assign({}, pool[5], { rarity: "legendary" }), pool), "blank", "a blank is always a blank");
+assert.ok(G.tierRank("legendary") > G.tierRank("epic") && G.tierRank("common") > G.tierRank("blank"));
+
+// ---------- the charge never over-promises ----------
+const rnd1 = seeded(7);
+const lateCount = {}, tellRuns = 3000;
+for (const tier of ["blank", "common", "rare", "epic", "legendary"]) {
+  lateCount[tier] = 0;
+  for (let i = 0; i < tellRuns; i++) {
+    const c = G.chargeTell(tier, rnd1);
+    assert.ok(c.steps.length >= 1);
+    for (let k = 1; k < c.steps.length; k++) assert.ok(G.tierRank(c.steps[k]) > G.tierRank(c.steps[k - 1]), "it only climbs");
+    const last = c.steps[c.steps.length - 1];
+    if (tier === "blank" || tier === "common") {
+      assert.deepStrictEqual(c.steps, ["common"], "the baseline is silver");
+      assert.strictEqual(c.late, false);
+      continue;
+    }
+    for (const st of c.steps) assert.ok(G.tierRank(st) <= G.tierRank(tier), tier + " showed " + st);
+    if (c.late) { lateCount[tier]++; assert.strictEqual(G.tierRank(last), G.tierRank(tier) - 1, "a late bloom stops exactly one short"); }
+    else assert.strictEqual(last, tier, "otherwise the last step is the truth");
+  }
+}
+for (const tier of ["rare", "epic", "legendary"]) {
+  assert.ok(Math.abs(lateCount[tier] / tellRuns - G.LATE_BLOOM) < 0.04, tier + " late bloom rate " + (lateCount[tier] / tellRuns).toFixed(3));
+}
+
+// ---------- the strip ----------
+const rnd2 = seeded(11);
+const tierOf = (i) => G.rarityOf(pool[i], pool);
+for (let winner = 0; winner < pool.length; winner++) {
   for (let k = 0; k < 400; k++) {
-    const rotation = G.landingRotation(i, angles);
-    const under = G.angleUnderPointer(rotation);
-    assert.ok(under >= angles[i].start && under < angles[i].end,
-      `index ${i}: clapper at ${under.toFixed(2)} outside [${angles[i].start}, ${angles[i].end})`);
-    assert.ok(rotation >= 5 * 360, "the wheel always makes at least five turns");
+    const strip = G.buildStrip(pool, winner, rnd2);
+    const cards = strip.cards, win = strip.win;
+    assert.strictEqual(cards.length, G.STRIP.length);
+    assert.strictEqual(win, G.STRIP.win);
+    assert.strictEqual(cards[win], winner, "the winner sits under the line");
+    const next = cards[win + 1];
+    assert.notStrictEqual(next, winner);
+    const bestOther = Math.max(...pool.map((p, i) => (i === winner ? -9 : G.tierRank(tierOf(i)))));
+    assert.strictEqual(G.tierRank(tierOf(next)), bestOther, "one card short of the best prize it did not land on");
+    const early = cards.slice(6, 30).filter((c) => G.tierRank(tierOf(c)) >= 2).length;
+    assert.ok(early >= 2, "high-tier cards fly past early");
   }
 }
-
-// The near-stop must sit OUTSIDE the winning segment, or the final creep does
-// not cross a divider and the whole beat is a lie.
-for (let i = 0; i < prizes.length; i++) {
-  for (let k = 0; k < 300; k++) {
-    const plan = G.landingPlan(i, angles);
-    assert.ok(plan.creep > 0 && plan.creep <= 21, `creep must stay a crawl, got ${plan.creep.toFixed(1)}`);
-    assert.strictEqual(G.segmentAt(angles, G.angleUnderPointer(plan.rotation)), i, "rests on the winner");
-    assert.notStrictEqual(G.segmentAt(angles, G.angleUnderPointer(plan.rotation - plan.creep)), i,
-      "near-stop is one notch short");
-  }
+// the near miss for a non-legendary win is the legendary
+assert.strictEqual(G.buildStrip(pool, 2, seeded(3)).cards[G.STRIP.win + 1], 0);
+// reproducible from a seed
+assert.deepStrictEqual(G.buildStrip(pool, 1, seeded(5)), G.buildStrip(pool, 1, seeded(5)));
+// a prize that cannot be won never appears
+const withDead = pool.concat([{ id: "dead", weight: 0 }]);
+for (let k = 0; k < 200; k++) {
+  assert.ok(G.buildStrip(withDead, 2, rnd2).cards.indexOf(6) === -1, "zero-weight prizes stay off the reel");
 }
-const shallow = G.landingPlan(2, angles, { frac: 0, turns: 6 });
-const deep = G.landingPlan(2, angles, { frac: 1, turns: 6 });
-assert.ok(shallow.creep < deep.creep);
-assert.ok(G.angleUnderPointer(shallow.rotation) > G.angleUnderPointer(deep.rotation));
 
 const one = [{ id: "only", weight: 5 }];
 assert.strictEqual(G.drawPrize(one).index, 0);
-assert.strictEqual(G.segmentAngles(one)[0].end, 360);
+assert.deepStrictEqual(G.buildStrip(one, 0, seeded(1)).cards.filter((c) => c !== 0), [], "a pool of one still builds");
 
 // ---------- schedules and rest days ----------
 // 2026-09-07 is a Monday

@@ -1,8 +1,8 @@
 # Gold
 
-Daily habits, earned tickets, a wheel worth spinning. Check habits off, hit the
-day's points target, get a ticket. Spend a ticket on the wheel. Whatever you win
-sits in the vault until you use it.
+Daily habits, earned tickets, a prize worth the wait. Check habits off, hit the
+day's points target, get a ticket. A ticket plays a short show that ends in a
+prize. Whatever you win sits in the vault until you use it.
 
 Runs entirely in the browser on your phone: no account, no server, no API key,
 no cost.
@@ -24,13 +24,35 @@ no cost.
   so they skip the points economy entirely.
 - Hit the day's **points target** → 1 ticket.
 - Every **N qualifying days in a row** (default 7) → 1 bonus ticket.
-- A ticket buys one spin: flick the dial or tap Spin. Prize odds are per-prize
-  **weights** you set; the percentage each weight produces is shown live while you
-  drag the slider. The core reads out whatever is under the indicator, so a prize
-  name never has to fit inside its wedge.
-- One wedge **wins nothing** (16% by default). A spin is a gamble or it is just
+- A ticket buys one **reveal** (below). Prize odds are per-prize **weights** you
+  set; the percentage each weight produces is shown live while you drag the slider.
+- One prize **wins nothing** (16% by default). A ticket is a gamble or it is just
   a vending machine. Any prize can be made a blank, and its weight tuned.
 - Wins go to the **Vault** and stay there until you mark them used.
+
+### The reveal
+
+About 12 to 14 seconds, built from what slot machines, gacha pulls and card
+packs use to make the wait itself feel good. The prize is drawn the moment you
+tap, and the ticket is spent and the prize put in the vault before the show
+starts; nothing in the show changes the odds.
+
+1. **Charge.** The ticket feeds a glowing core whose colour steps up through the
+   tiers: silver, blue, purple, gold. The colour is a promise that is never
+   broken: the prize is at least that tier.
+2. **Reel.** The core folds into a line and a strip of prize cards rips past
+   under it, showing only silhouettes in tier-coloured frames. It slows, hangs on
+   the edge of a card, and creeps onto it. The best prize it did not land on sits
+   one card further on. About a third of the time a blue, purple or gold prize
+   lands a tier above what the charge showed: the **late bloom**.
+3. **Reveal.** The card lifts out face-down, glowing, and flips. Bigger fanfare,
+   sparks and light for rarer tiers; a blank gets smoke and "Nothing this time".
+
+**Hold anywhere** during the show to run it at 4x; let go to drop back.
+
+**Rarity** comes from each prize's odds: 7% or less is legendary, 12% or less
+epic, 20% or less rare, the rest common. Any prize can be set to a tier by hand
+in its editor.
 
 Every number above is editable in Settings. Nothing about the economy is
 hard-coded.
@@ -97,7 +119,7 @@ and adding a habit today cannot retroactively break a live streak.
 2. **Install to the home screen first**, then use the installed app — a browser
    tab and an installed PWA do not always share storage.
 3. Settings → Habits: replace the seed with your real ones, with real targets.
-4. Settings → The deal: set the points needed for a spin and the streak length.
+4. Settings → The deal: set the points needed for a ticket and the streak length.
 5. Settings → Prizes: set the prizes and drag the weights until the percentages
    look right.
 
@@ -116,10 +138,11 @@ node scripts/test-logic.js   # pure-function tests
 - `ui.js` — shared visuals: the gradient ring, sparks, counters, grain
 - `fonts/` — Inter and Sora, self-hosted so they work offline (SIL Open Font License)
 - `logic.js` — every rule: points, schedules, rest days, streaks, habit stats,
-  milestones, ticket reconciliation, weighted draw, wheel geometry. Pure, and
+  milestones, ticket reconciliation, weighted draw, rarity and the reveal's
+  charge and reel. Pure, and
   tested in node.
-- `wheel.js` — the dial: luminous arc segments over glass, a core readout, labels sized
-  to their wedge, flick-to-spin, five-act physics, haptics, sparks
+- `reveal.js` — the ticket show: charge, reel and card flip on one virtual clock
+  (which is how hold-to-speed-up works), a particle canvas, haptics and sound cues
 - `sound.js` — every sound synthesised with Web Audio; no audio files ship
 - `db.js` — IndexedDB layer, backup and restore
 - `seed.json` — the habits and prizes a fresh install starts with
@@ -137,4 +160,4 @@ in-app settings. Beyond that:
   `createObjectStore`, so a genuinely new store is a version bump and one line.
 - **Any new store must be added to `STORES` in `db.js`**, or backup and restore
   will silently skip it.
-- The wheel is handed a prize array and a winning index and knows nothing else.
+- The reveal is handed a prize array and a winning index and knows nothing else.

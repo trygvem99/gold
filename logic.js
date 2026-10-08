@@ -1,6 +1,6 @@
 // Gold pure logic — shared by the browser (window.Gold) and node tests.
 // Every rule of the economy lives here: points, qualifying days, streaks,
-// ticket reconciliation, the moving bar, weighted draw, wheel geometry.
+// ticket reconciliation, the moving bar, weighted draw, rarity and the reveal.
 // No DOM, no IndexedDB.
 (function (global) {
   "use strict";
@@ -260,7 +260,7 @@
       out.push({ id: "reps-" + n, kind: "reps", value: n, label: `${n} check-ins`,
         earned: reps >= n, progress: Math.min(1, reps / n) });
     }
-    out.push({ id: "spin-1", kind: "spin", value: 1, label: "First spin", earned: spins >= 1, progress: Math.min(1, spins) });
+    out.push({ id: "spin-1", kind: "spin", value: 1, label: "First reveal", earned: spins >= 1, progress: Math.min(1, spins) });
     out.push({ id: "quarter-1", kind: "quarter", value: 1, label: "First big goal", earned: quarters >= 1, progress: Math.min(1, quarters) });
     return out;
   }
@@ -383,61 +383,88 @@
     return { prize: prizes[prizes.length - 1], index: prizes.length - 1 };
   }
 
-  // ---------- wheel geometry ----------
-  // Angles are degrees clockwise from the top, where the clapper sits.
+  // ---------- rarity ----------
+  // The colour grammar every gacha game shares: common silver, rare blue, epic
+  // purple, legendary gold. A prize's tier comes from its odds unless it has
+  // been set by hand; a blank is its own thing.
 
-  function segmentAngles(prizes) {
-    const total = totalWeight(prizes);
-    let cursor = 0;
-    return prizes.map((p) => {
-      const span = total <= 0 ? 0 : (Math.max(0, p.weight) / total) * 360;
-      const seg = { start: cursor, end: cursor + span, mid: cursor + span / 2 };
-      cursor += span;
-      return seg;
-    });
+  const TIERS = ["common", "rare", "epic", "legendary"];
+  const TIER_LIMITS = { legendary: 7, epic: 12, rare: 20 }; // percent, inclusive
+  const tierRank = (t) => (t === "blank" ? -1 : TIERS.indexOf(t));
+
+  function rarityOf(prize, prizes) {
+    if (prize.blank) return "blank";
+    if (TIERS.indexOf(prize.rarity) !== -1) return prize.rarity;
+    const p = probabilityFor(prize, prizes);
+    return p <= TIER_LIMITS.legendary ? "legendary"
+      : p <= TIER_LIMITS.epic ? "epic"
+        : p <= TIER_LIMITS.rare ? "rare" : "common";
   }
 
-  // Rotating the wheel by `rot` brings this local angle under the clapper.
-  const angleUnderPointer = (rot) => (((360 - (rot % 360)) % 360) + 360) % 360;
+  // ---------- the reveal ----------
 
-  function segmentAt(angles, localAngle) {
-    for (let i = 0; i < angles.length; i++) {
-      if (localAngle >= angles[i].start && localAngle < angles[i].end) return i;
+  // How often the charge stops one tier short of the truth, so the higher
+  // colour only arrives when the reel lands — the late bloom. It applies to
+  // every tier above common, which is what gives the reel suspense of its own:
+  // a blue charge may still land purple.
+  const LATE_BLOOM = 0.35;
+
+  // The tiers the charge steps through before the reel. It climbs, and never
+  // claims more than the truth: the last step is the real tier, or one below
+  // it in a late bloom. Blanks and commons both show silver — the baseline —
+  // so a loss is only known when the reel stops, as on a slot.
+  function chargeTell(tier, rand) {
+    const rnd = rand || Math.random;
+    const late = tierRank(tier) >= 1 && rnd() < LATE_BLOOM;
+    const lead = rnd() < 0.3;
+    switch (tier) {
+      case "rare": return { steps: late ? ["common"] : ["common", "rare"], late };
+      case "epic": {
+        const top = late ? ["rare"] : ["rare", "epic"];
+        return { steps: lead ? ["common"].concat(top) : top, late };
+      }
+      case "legendary": return { steps: late ? ["rare", "epic"] : ["rare", "epic", "legendary"], late };
+      default: return { steps: ["common"], late: false };
     }
-    return angles.length - 1;
   }
 
-  // Where the wheel must stop for `index` to win, and how far it has to creep
-  // to get there from a near-stop just short of the segment.
-  //
-  // The clapper sweeps local angles downward as the wheel turns forward, so it
-  // enters a segment across `end` and would leave across `start`. Resting
-  // `depth` in from `end` means backing off `depth + gap` puts it outside the
-  // segment entirely — which is the trick: the wheel can be brought to a near
-  // halt one notch short and then creep across the divider.
-  function landingPlan(index, angles, opts) {
-    const o = opts || {};
-    const rand = o.rand || Math.random;
-    const turns = o.turns == null ? 6 + Math.floor(rand() * 3) : o.turns;
-    const seg = angles[index];
-    const span = seg.end - seg.start;
-    const pad = Math.min(span * 0.2, 5);
-    const frac = o.frac == null ? rand() : clamp(o.frac, 0, 1);
-    // Rest shallow — within ~14 degrees of the leading edge — so the final
-    // creep stays a crawl instead of becoming another roll. The odds are
-    // untouched, only where inside the winning wedge it comes to rest.
-    const maxDepth = Math.min(span - pad, Math.max(pad + 1, 14));
-    const depth = pad + frac * Math.max(0, maxDepth - pad);
-    const a = seg.end - depth;
-    const gap = Math.min(6, Math.max(1.5, span * 0.12));
-    return {
-      rotation: turns * 360 + (((360 - (a % 360)) % 360) + 360) % 360,
-      creep: depth + gap,
-      angle: a,
+  // The reel: a strip of prize indices with the winner at a fixed slot and the
+  // best other prize right after it, so the reel visibly stops one card short
+  // of it. Everything else is drawn by weight, so the strip is honest about
+  // what is common — except that a couple of high-tier cards are guaranteed to
+  // fly past early. Prizes with no weight cannot be won, so they never appear.
+  const STRIP = { length: 48, win: 40 };
+
+  function buildStrip(prizes, winner, rand) {
+    const rnd = rand || Math.random;
+    const live = prizes.map((p, i) => ({ p, i, t: tierRank(rarityOf(p, prizes)) })).filter((x) => x.p.weight > 0);
+    const total = live.reduce((s, x) => s + x.p.weight, 0);
+    const pick = () => {
+      let r = rnd() * total;
+      for (const x of live) { r -= x.p.weight; if (r < 0) return x.i; }
+      return live[live.length - 1].i;
     };
-  }
+    const cards = Array.from({ length: STRIP.length }, pick);
+    cards[STRIP.win] = winner;
 
-  const landingRotation = (index, angles, opts) => landingPlan(index, angles, opts).rotation;
+    const others = live.filter((x) => x.i !== winner).sort((a, b) => (b.t - a.t) || (a.p.weight - b.p.weight));
+    if (others.length) cards[STRIP.win + 1] = others[0].i;
+
+    const high = live.filter((x) => x.t >= 2).map((x) => x.i);
+    if (high.length) {
+      const early = (k) => k >= 6 && k < 30;
+      let have = cards.filter((c, k) => early(k) && high.indexOf(c) !== -1).length;
+      const slots = [9, 16, 23, 28];
+      const off = Math.floor(rnd() * slots.length);
+      for (let n = 0; have < 2 && n < slots.length; n++) {
+        const k = slots[(n + off) % slots.length];
+        if (high.indexOf(cards[k]) !== -1) continue;
+        cards[k] = high[Math.floor(rnd() * high.length)];
+        have++;
+      }
+    }
+    return { cards, win: STRIP.win };
+  }
 
   // ---------- icons ----------
 
@@ -542,7 +569,7 @@
     ticketsOwed, ticketKey, reconcileTickets, unspentTickets, MANAGED,
     ADAPT, adaptTarget, applyTarget,
     activePrizes, totalWeight, probabilityFor, drawPrize,
-    segmentAngles, angleUnderPointer, segmentAt, landingPlan, landingRotation,
+    TIERS, tierRank, rarityOf, LATE_BLOOM, chargeTell, STRIP, buildStrip,
     suggestIcons, defaultSettings,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
