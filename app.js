@@ -2,7 +2,7 @@
 // the ticket show in reveal.js, shared visuals in ui.js.
 "use strict";
 
-const BUILD = "2026-10-08 · steps";
+const BUILD = "2026-10-11 · zoom lock";
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -1286,6 +1286,16 @@ $("#editor-delete").addEventListener("click", async () => {
   await editorCtx.onDelete();
   closeEditor();
 });
+
+// ---------- zoom lock ----------
+// iOS ignores user-scalable=no, so pinch is cancelled here. Inputs are 16px in
+// the stylesheet, which is what stops focus-zoom. Unlike CalTrack there is no
+// double-tap trap on touchend: it would swallow the second of two quick taps on
+// a habit tile, and touch-action already rules out double-tap zoom.
+for (const ev of ["gesturestart", "gesturechange", "gestureend"]) {
+  document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+}
+document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
 // ---------- backup / restore ----------
 

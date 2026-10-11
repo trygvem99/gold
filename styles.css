@@ -49,7 +49,11 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { -webkit-text-size-adjust: 100%; background: var(--bg); }
+/* Zoom is locked, as in CalTrack: the meta tag covers Android, touch-action
+   and the gesture handlers in app.js cover iOS, which ignores user-scalable.
+   pan-x pan-y also rules out double-tap zoom without delaying quick taps. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; touch-action: pan-x pan-y; background: var(--bg); }
+body { touch-action: pan-x pan-y; }
 
 body {
   margin: 0;
@@ -729,7 +733,7 @@ input.switch:checked::after { transform: translateX(20px); background: var(--gol
 .sheet textarea {
   width: 100%; resize: vertical; min-height: 74px;
   background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line-hi); border-radius: 12px;
-  color: var(--text); padding: 11px 12px; font: 400 15px/1.45 var(--body);
+  color: var(--text); padding: 11px 12px; font: 400 16px/1.45 var(--body);
 }
 .sheet textarea:focus { outline: none; border-color: rgba(255, 255, 255, 0.35); box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05); }
 .steps-edit { display: flex; flex-direction: column; gap: 8px; }
