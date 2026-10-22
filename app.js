@@ -2,7 +2,7 @@
 // the ticket show in reveal.js, shared visuals in ui.js.
 "use strict";
 
-const BUILD = "2026-10-11 · zoom lock";
+const BUILD = "2026-10-22 · wipe screen";
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -1421,7 +1421,12 @@ async function bootLoad() {
   if (failed) throw failed;
   const missing = shortOf(want);
   if (missing.length || (!settings && want.seeded)) {
-    return { ok: false, want, missing };
+    // Nothing at all after four reads, on a phone that has held data, is not a
+    // slow read: the browser has deleted the database. That is what happened
+    // to CalTrack on 21 Oct, on this same origin. A new database is proof; an
+    // empty one that survived an earlier launch under older code counts too.
+    const empty = !habits.length && !prizes.length && !goals.length && !days.length && !wins.length;
+    return { ok: false, want, missing, wiped: empty && (DB.created() || (want.habits || 0) + (want.prizes || 0) > 0) };
   }
   await ensureSettings();
   await ensureColors();
@@ -1429,9 +1434,20 @@ async function bootLoad() {
   return { ok: true };
 }
 
-function showLoadProblem(msg) {
+function showLoadProblem(msg, wiped) {
   const box = $("#load-problem");
+  $("#load-problem-title").textContent = wiped ? "Gold's data is gone from this phone" : "Your data didn't load";
   $("#load-problem-text").textContent = msg;
+  $("#load-problem-or").textContent = wiped
+    ? "A backup is a gold-backup file from Settings, Backup, Export. Without one, Start over gives you a fresh setup."
+    : "If it keeps failing, the data may really be gone from this phone.";
+  // a wipe cannot be retried away, so restore leads and retry steps back
+  $("#load-problem-restore").classList.toggle("primary", !!wiped);
+  $("#load-problem-retry").classList.toggle("primary", !wiped);
+  $("#load-problem-retry").classList.toggle("small", !!wiped);
+  $("#load-problem-restore").classList.toggle("small", !wiped);
+  const retry = $("#load-problem-retry"), restore = $("#load-problem-restore");
+  if (wiped) retry.before(restore); else restore.before(retry);
   box.hidden = false;
   $("#boot").hidden = true;
 }
@@ -1453,6 +1469,13 @@ Ui.grain();
     const res = await bootLoad();
     if (!res.ok) {
       const have = counts();
+      if (res.wiped) {
+        const had = ["habits", "goals", "days", "wins"].filter((k) => res.want[k]).map((k) => `${res.want[k]} ${k === "days" ? "logged days" : k}`).join(", ");
+        showLoadProblem(`Gold's storage on this phone is empty${had ? `, where it last held ${had}` : ""}. ` +
+          "The browser deleted it, most likely the same thing that emptied CalTrack on 21 October. " +
+          "Nothing in Gold deletes data, and trying again will not bring it back.", true);
+        return;
+      }
       const lines = res.missing.map((k) => `${have[k]} of ${res.want[k]} ${k}`).join(", ");
       showLoadProblem(`Only part of your data loaded (${lines}). Nothing has been changed or deleted.`);
       return;

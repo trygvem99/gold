@@ -1126,6 +1126,7 @@ body.revealing { overflow: hidden; }
 .load-card h3 { font: 700 19px/1.2 var(--display); margin-bottom: 10px; }
 .load-card p { color: var(--dim); font-size: 14px; margin: 0 0 18px; }
 .load-card .load-or { font-size: 12px; margin: 18px 0 10px; }
+.load-card > .btn { display: block; margin: 0 auto 10px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

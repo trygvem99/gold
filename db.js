@@ -8,6 +8,7 @@ const DB = (() => {
   const VERSION = 2;
   let _db = null;
   let _opening = null; // in-flight open; without it parallel reads each opened the database
+  let _created = false; // this launch created the database: there was nothing to read
 
   // Guarded from version 1 so that bumping VERSION later and appending a store
   // is safe on installs that already exist.
@@ -32,7 +33,11 @@ const DB = (() => {
     _opening = new Promise((resolve, reject) => {
       const req = indexedDB.open(NAME, VERSION);
       req.onblocked = () => reject(new Error("Storage is held open by another tab"));
-      req.onupgradeneeded = () => upgrade(req.result);
+      req.onupgradeneeded = (e) => {
+        // A failed or slow read cannot create a database. Only a missing one can.
+        if (e.oldVersion === 0) _created = true;
+        upgrade(req.result);
+      };
       req.onsuccess = () => {
         _db = req.result;
         // a backgrounded app can have its connection closed underneath it;
@@ -74,7 +79,7 @@ const DB = (() => {
   const get = (store, key) => tx(store, "readonly", (s) => s.get(key));
   const getAll = (store) => tx(store, "readonly", (s) => s.getAll());
 
-  return { open, close, withTimeout, put, bulkPut, bulkDel, del, clear, get, getAll };
+  return { open, close, withTimeout, put, bulkPut, bulkDel, del, clear, get, getAll, created: () => _created };
 })();
 
 const Data = (() => {
