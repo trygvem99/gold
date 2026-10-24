@@ -2,7 +2,7 @@
 // the ticket show in reveal.js, shared visuals in ui.js.
 "use strict";
 
-const BUILD = "2026-10-22 · wipe screen";
+const BUILD = "2026-10-24 · backup check";
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -1434,12 +1434,25 @@ async function bootLoad() {
   return { ok: true };
 }
 
+// localStorage outlived the wipe (that is how the wipe is known), so the date
+// of the last export it holds says whether a backup file exists at all.
+function backupHint() {
+  const last = Number(localStorage.getItem("gold_last_backup") || 0);
+  if (!last) {
+    return "This phone has no record of ever exporting a backup, so there is most likely no file to restore. " +
+      "Start over gives you a fresh setup.";
+  }
+  const iso = new Date(last).toISOString().slice(0, 10); // the file is named by UTC date
+  return `Last backup export: ${Gold.prettyDate(iso)} (file gold-backup-${iso}.json). ` +
+    "Find it in Downloads, or wherever you shared it, and restore it above.";
+}
+
 function showLoadProblem(msg, wiped) {
   const box = $("#load-problem");
   $("#load-problem-title").textContent = wiped ? "Gold's data is gone from this phone" : "Your data didn't load";
   $("#load-problem-text").textContent = msg;
   $("#load-problem-or").textContent = wiped
-    ? "A backup is a gold-backup file from Settings, Backup, Export. Without one, Start over gives you a fresh setup."
+    ? backupHint()
     : "If it keeps failing, the data may really be gone from this phone.";
   // a wipe cannot be retried away, so restore leads and retry steps back
   $("#load-problem-restore").classList.toggle("primary", !!wiped);
