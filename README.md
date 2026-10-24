@@ -95,7 +95,16 @@ and adding a habit today cannot retroactively break a live streak.
 
 ## How it works
 
-- **Storage**: IndexedDB on the phone. No account, no cloud, no sync.
+- **Storage**: IndexedDB on the phone, treated as a cache the phone may wipe.
+- **Automatic backup**: every change is uploaded within seconds to
+  `gold-backup.json` in a **private** GitHub repository, and every version stays
+  in its git history. On a phone that already runs CalTrack, Gold adopts
+  CalTrack's key and private repository (same origin, same localStorage), so
+  there is nothing to set up. A wiped phone is recognised at startup and offered
+  a one-tap restore; a phone holding much less than the backup never overwrites
+  it unless you type REPLACE; restore skips a bad newest copy for the newest
+  good one in history. Today shows a red warning whenever the data is not safely
+  backed up.
 - **Hosting**: static files on GitHub Pages. Deploying is `git push`.
 - **Cost**: $0. There is no API and nothing to subscribe to.
 
@@ -104,9 +113,11 @@ and adding a habit today cannot retroactively break a live streak.
 - **Startup is guarded.** If storage reads back less than this phone is known to
   hold, the app retries, and if it stays short it changes nothing and says so —
   it never seeds or writes defaults over data that failed to load.
-- **One device.** Data lives on the phone that entered it. Clearing browser data
-  or uninstalling the app deletes it. **The export in Settings is the only safety
-  net** — the Backup card nags once the last export is over 14 days old.
+- **The browser can wipe the phone's copy.** It did on 21 Oct 2026, taking
+  Gold's data with it, because there was no automatic backup then. There is now;
+  the file export in Settings remains as a second copy.
+- **Gold and CalTrack share an origin** (`trygvem99.github.io`), so they share
+  storage and caches. Each service worker deletes only its own caches.
 - **No reminders.** A PWA with no server cannot reliably nudge you at 21:00, and
   cannot put a widget on the Android home screen. You have to open it.
 - **Sound needs a tap first.** Browsers refuse audio until you have interacted
@@ -148,7 +159,8 @@ node scripts/test-logic.js   # pure-function tests
 - `reveal.js` — the ticket show: charge, reel and card flip on one virtual clock
   (which is how hold-to-speed-up works), a particle canvas, haptics and sound cues
 - `sound.js` — every sound synthesised with Web Audio; no audio files ship
-- `db.js` — IndexedDB layer, backup and restore
+- `db.js` — IndexedDB layer, snapshot, file backup and restore
+- `cloud.js` — the automatic off-phone backup to a private GitHub repository
 - `seed.json` — the habits and prizes a fresh install starts with
 - `manifest.webmanifest` / `sw.js` / `icon.svg` — PWA shell
 

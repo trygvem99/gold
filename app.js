@@ -2,7 +2,7 @@
 // the ticket show in reveal.js, shared visuals in ui.js.
 "use strict";
 
-const BUILD = "2026-10-24 · backup check";
+const BUILD = "2026-10-24 · auto backup";
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -813,11 +813,12 @@ function renderSettings() {
 
   $("#set-sound").checked = !Sfx.isMuted();
 
+  renderCloud();
   const last = Number(localStorage.getItem("gold_last_backup") || 0);
   const daysAgo = last ? Math.floor((Date.now() - last) / 86400000) : null;
-  $("#backup-hint").textContent = last
-    ? `Last export ${daysAgo === 0 ? "today" : daysAgo + " days ago"}.${daysAgo > 14 ? " Worth doing again." : ""}`
-    : "Never exported. Your data only exists on this phone.";
+  $("#backup-hint").textContent = "A file copy, on top of the automatic one: " + (last
+    ? `last exported ${daysAgo === 0 ? "today" : daysAgo + " days ago"}.`
+    : "never exported.");
   $("#build").textContent = `Gold · build ${BUILD}`;
 }
 
@@ -1299,6 +1300,111 @@ document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.prev
 
 // ---------- backup / restore ----------
 
+const ago = (t) => {
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+};
+
+// What is wrong with the off-phone copy, in a sentence, or null when it is fine.
+function cloudProblem() {
+  const st = Cloud.status();
+  if (!st.enabled) return "Not backed up off this phone. If the browser wipes it again, everything is lost.";
+  if (st.held) return "Backup paused: this phone's data was wiped. Restore it first.";
+  if (st.blocked) return "Backup paused: this phone holds far less than the backup, so it will not overwrite it. Restore it, or replace it on purpose in Settings.";
+  if (st.lastError) return `The last backup failed (${st.lastError}). It retries on your next change.`;
+  if (st.lastAt && Date.now() - st.lastAt > 3 * 86400000) return `Last backed up ${ago(st.lastAt)}.`;
+  return null;
+}
+
+function renderCloud() {
+  const st = Cloud.status();
+  const bad = cloudProblem();
+  $("#cloud-status").textContent = bad || (st.busy ? "Backing up…"
+    : st.lastAt ? `Backed up automatically to ${st.repo} (private), ${ago(st.lastAt)}. Every change is saved within seconds and every version is kept.`
+      : `Automatic backup is on, to ${st.repo} (private).`);
+  $("#cloud-status").classList.toggle("bad", !!bad);
+  $("#cloud-setup").hidden = st.enabled;
+  $("#cloud-actions").hidden = !st.enabled;
+}
+
+function renderBackupWarn() {
+  const bad = cloudProblem();
+  $("#backup-warn").hidden = !bad;
+  if (bad) $("#backup-warn-text").innerHTML = `<strong>Your data is not safe.</strong><br>${esc(bad)}`;
+}
+
+Cloud.onChange(() => {
+  renderBackupWarn();
+  if (!$("#view-settings").hidden) renderCloud();
+});
+$("#backup-warn-go").addEventListener("click", () => showView("settings"));
+
+$("#cloud-connect").addEventListener("click", async () => {
+  try {
+    await Cloud.setup($("#cloud-token").value, $("#cloud-repo").value);
+    $("#cloud-token").value = "";
+    renderCloud();
+    Cloud.flush(false);
+  } catch (e) {
+    alert("Could not connect: " + e.message);
+  }
+});
+$("#cloud-now").addEventListener("click", async () => {
+  const st = Cloud.status();
+  // replacing a fuller backup with less is the one thing that loses data here
+  if (st.blocked && prompt("This phone holds far less than the backup. Type REPLACE to overwrite the backup with what is on this phone. (Older versions stay in the repository's history.)") !== "REPLACE") return;
+  await Cloud.flush(true);
+  renderCloud();
+});
+
+async function restoreFromCloud(btn) {
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Restoring…";
+  try {
+    const snap = await Cloud.bestSnapshot();
+    if (!snap || !Cloud.size(snap)) throw new Error("the backup is empty");
+    await Data.restoreBackup(snap);
+    await reloadCaches(); // records the restored counts as what this phone holds
+    location.reload();
+  } catch (e) {
+    alert("Restore failed: " + e.message);
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+$("#cloud-restore").addEventListener("click", (e) => {
+  if (!confirm("Replace everything on this phone with the automatic backup?")) return;
+  restoreFromCloud(e.currentTarget);
+});
+$("#load-problem-cloud").addEventListener("click", (e) => restoreFromCloud(e.currentTarget));
+
+// On a wiped phone, look up what the automatic backup holds and lead with it.
+async function offerCloudRestore() {
+  if (!Cloud.enabled()) return;
+  const info = $("#load-problem-cloud-info");
+  info.hidden = false;
+  info.textContent = "Checking the automatic backup…";
+  try {
+    const snap = await Cloud.bestSnapshot();
+    if (!snap || !Cloud.size(snap)) { info.textContent = "The automatic backup holds nothing yet."; return; }
+    const d = Cloud.describe(snap);
+    const n = (k, one, many) => `${d[k]} ${d[k] === 1 ? one : many}`;
+    info.textContent = `The automatic backup from ${new Date(d.exported_at).toLocaleString()} holds ` +
+      `${n("habits", "habit", "habits")}, ${n("goals", "goal", "goals")}, ${n("days", "logged day", "logged days")} and ${n("wins", "win", "wins")}.`;
+    $("#load-problem-or").textContent = "Start over only if you do not want this backup back.";
+    const btn = $("#load-problem-cloud");
+    btn.hidden = false;
+    $("#load-problem-title").after(btn);
+    btn.after(info);
+    $("#load-problem-restore").classList.remove("primary");
+    $("#load-problem-restore").classList.add("small");
+    $("#load-problem-restore").textContent = "Restore a backup file";
+  } catch (e) {
+    info.textContent = `Could not reach the automatic backup (${e.message}). Check the connection and try again.`;
+  }
+}
+
 $("#backup-btn").addEventListener("click", async () => {
   await Data.exportBackup();
   renderSettings();
@@ -1483,10 +1589,12 @@ Ui.grain();
     if (!res.ok) {
       const have = counts();
       if (res.wiped) {
+        Cloud.hold("wiped"); // this empty phone must not become the backup
         const had = ["habits", "goals", "days", "wins"].filter((k) => res.want[k]).map((k) => `${res.want[k]} ${k === "days" ? "logged days" : k}`).join(", ");
         showLoadProblem(`Gold's storage on this phone is empty${had ? `, where it last held ${had}` : ""}. ` +
           "The browser deleted it, most likely the same thing that emptied CalTrack on 21 October. " +
           "Nothing in Gold deletes data, and trying again will not bring it back.", true);
+        offerCloudRestore();
         return;
       }
       const lines = res.missing.map((k) => `${have[k]} of ${res.want[k]} ${k}`).join(", ");
@@ -1506,6 +1614,11 @@ Ui.grain();
   if (document.fonts) await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1200))]);
   showView("today");
   $("#boot").hidden = true;
+  // Every committed write is backed up off the phone a few seconds later, and
+  // once at launch in case the last session ended before its upload did.
+  DB.onWrite(() => Cloud.schedule());
+  Cloud.schedule();
+  renderBackupWarn();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
   document.addEventListener("visibilitychange", async () => {
     if (document.hidden) return;

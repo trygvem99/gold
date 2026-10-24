@@ -23,6 +23,8 @@
     <div class="load-card glass">
       <h3 id="load-problem-title">Your data didn't load</h3>
       <p id="load-problem-text"></p>
+      <button class="btn primary" id="load-problem-cloud" type="button" hidden>Restore automatic backup</button>
+      <p class="load-or" id="load-problem-cloud-info" hidden></p>
       <button class="btn primary" id="load-problem-retry" type="button">Try again</button>
       <button class="btn small" id="load-problem-restore" type="button">Restore a backup</button>
       <p class="load-or" id="load-problem-or">If it keeps failing, the data may really be gone from this phone.</p>
@@ -45,6 +47,11 @@
       <div class="week-strip" id="week-strip" data-rise></div>
 
       <div class="hero glass" id="hero" data-rise></div>
+
+      <div class="notice glass warn" id="backup-warn" hidden>
+        <div id="backup-warn-text"></div>
+        <button class="linkish" id="backup-warn-go" type="button">Fix</button>
+      </div>
 
       <div class="notice glass" id="bar-notice" hidden>
         <div id="bar-notice-text"></div>
@@ -153,6 +160,16 @@
 
       <div class="card glass" data-rise>
         <h3>Backup</h3>
+        <p class="hint cloud-status" id="cloud-status"></p>
+        <div id="cloud-setup" hidden>
+          <label class="field"><span>GitHub key</span><input type="password" id="cloud-token" autocomplete="off" /></label>
+          <label class="field"><span>Private repository</span><input type="text" id="cloud-repo" placeholder="you/private-repo" autocomplete="off" /></label>
+          <button class="btn small primary" id="cloud-connect" type="button">Connect</button>
+        </div>
+        <div class="btn-row" id="cloud-actions" hidden>
+          <button class="btn small" id="cloud-now" type="button">Back up now</button>
+          <button class="btn small" id="cloud-restore" type="button">Restore from backup</button>
+        </div>
         <p class="hint" id="backup-hint"></p>
         <div class="btn-row">
           <button class="btn small" id="backup-btn" type="button">Export</button>
@@ -213,6 +230,7 @@
 
   <script src="logic.js"></script>
   <script src="db.js"></script>
+  <script src="cloud.js"></script>
   <script src="sound.js"></script>
   <script src="ui.js"></script>
   <script src="reveal.js"></script>

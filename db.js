@@ -9,6 +9,7 @@ const DB = (() => {
   let _db = null;
   let _opening = null; // in-flight open; without it parallel reads each opened the database
   let _created = false; // this launch created the database: there was nothing to read
+  let _onWrite = null;  // told after every committed write; drives the off-phone backup
 
   // Guarded from version 1 so that bumping VERSION later and appending a store
   // is safe on installs that already exist.
@@ -55,7 +56,10 @@ const DB = (() => {
     return open().then((db) => new Promise((resolve, reject) => {
       const t = db.transaction(store, mode);
       const result = fn(t.objectStore(store));
-      t.oncomplete = () => resolve(result instanceof IDBRequest ? result.result : result);
+      t.oncomplete = () => {
+        resolve(result instanceof IDBRequest ? result.result : result);
+        if (mode === "readwrite" && _onWrite) _onWrite();
+      };
       t.onerror = () => reject(t.error || new Error("Storage transaction failed"));
       // Without this an aborted transaction settles nothing and startup waits
       // on it forever — the same hang CalTrack had.
@@ -79,7 +83,7 @@ const DB = (() => {
   const get = (store, key) => tx(store, "readonly", (s) => s.get(key));
   const getAll = (store) => tx(store, "readonly", (s) => s.getAll());
 
-  return { open, close, withTimeout, put, bulkPut, bulkDel, del, clear, get, getAll, created: () => _created };
+  return { open, close, withTimeout, put, bulkPut, bulkDel, del, clear, get, getAll, created: () => _created, onWrite: (f) => { _onWrite = f; } };
 })();
 
 const Data = (() => {
@@ -140,14 +144,16 @@ const Data = (() => {
   const saveSettings = (value) => DB.put("settings", { key: "settings", value });
 
   // ---- backup / restore ----
-  async function exportBackup() {
+  // Everything, in the backup format. Both the file export and the automatic
+  // off-phone backup are this.
+  async function snapshot() {
     const stores = {};
     for (const s of STORES) stores[s] = await DB.getAll(s);
-    const payload = {
-      app: "gold", format: FORMAT,
-      exported_at: new Date().toISOString(),
-      stores,
-    };
+    return { app: "gold", format: FORMAT, exported_at: new Date().toISOString(), stores };
+  }
+
+  async function exportBackup() {
+    const payload = await snapshot();
     const name = `gold-backup-${payload.exported_at.slice(0, 10)}.json`;
     const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
     const file = new File([blob], name, { type: "application/json" });
@@ -182,7 +188,7 @@ const Data = (() => {
   }
 
   return {
-    init, newId, getSettings, saveSettings, exportBackup, restoreBackup, known, remember,
+    init, newId, getSettings, saveSettings, snapshot, exportBackup, restoreBackup, known, remember,
     habits: {
       all: () => DB.getAll("habits"),
       put: (h) => DB.put("habits", h),

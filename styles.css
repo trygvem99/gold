@@ -1127,6 +1127,9 @@ body.revealing { overflow: hidden; }
 .load-card p { color: var(--dim); font-size: 14px; margin: 0 0 18px; }
 .load-card .load-or { font-size: 12px; margin: 18px 0 10px; }
 .load-card > .btn { display: block; margin: 0 auto 10px; }
+.notice.warn { border-color: rgba(255, 122, 122, 0.45); box-shadow: inset 0 0 0 1px rgba(255, 122, 122, 0.25); }
+.notice.warn strong { color: var(--danger); }
+.cloud-status.bad { color: var(--danger); }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
