@@ -128,11 +128,26 @@ assert.strictEqual(G.goalTickets(quarterGoal("q", 3)), 3);
 assert.strictEqual(G.goalTickets({ kind: "quarter" }), 3, "quarterly goals default to three tickets");
 assert.deepStrictEqual(G.stepProgress({ kind: "week" }), { done: 0, total: 0 }, "a goal without steps");
 assert.deepStrictEqual(G.stepProgress({ steps: [{ id: "a", done_at: "2026-10-08T10:00:00Z" }, { id: "b", done_at: null }] }), { done: 1, total: 2 });
-// steps never touch the day: a ticked step on an open goal earns no point
+// every ticked step is a bonus point on the day it was ticked, in both kinds of goal
 {
-  const withSteps = Object.assign(weekGoal("s", null), { steps: [{ id: "a", name: "x", done_at: "2026-10-08T10:00:00Z" }] });
-  const st = G.dayStats(day("2026-10-08", {}), [], [withSteps], cfg(1));
-  assert.strictEqual(st.points, 0, "a step is worth nothing");
+  const step = (id, on) => ({ id, name: id, done_at: on ? on + "T09:00:00Z" : null, done_on: on });
+  const wk = Object.assign(weekGoal("w", null), { steps: [step("a", "2026-10-08"), step("b", "2026-10-08"), step("c", null)] });
+  const qt = Object.assign(quarterGoal("q", 3, null), { steps: [step("d", "2026-10-08"), step("e", "2026-10-09")] });
+  const h = habit("h", 2, "2026-01-01");
+  const st = G.dayStats(day("2026-10-08", { h: 1 }), [h], [wk, qt], cfg(3));
+  assert.strictEqual(st.points, 4, "1 habit point + 3 steps ticked that day");
+  assert.strictEqual(st.max, 5, "steps raise what the day holds only once ticked");
+  assert.strictEqual(st.bonus, 3);
+  assert.strictEqual(G.dayStats(day("2026-10-09", {}), [h], [wk, qt], cfg(3)).points, 1, "a step counts on its own day only");
+  assert.strictEqual(G.dayStats(day("2026-10-10", {}), [h], [wk, qt], cfg(3)).points, 0, "an unticked step is worth nothing");
+  // steps reach the threshold: 1 habit point + 3 steps against a bar of 3 earns the day's ticket
+  assert.ok(G.dayStats(day("2026-10-08", { h: 1 }), [h], [wk, qt], cfg(3)).qualifies);
+  // a step's day is the local day it was ticked, not the UTC date of its timestamp
+  const late = { id: "x", name: "x", done_at: "2026-10-07T23:30:00Z", done_on: "2026-10-08" };
+  assert.strictEqual(G.stepDate(late), "2026-10-08");
+  assert.strictEqual(G.stepDate({ done_at: "2026-10-07T23:30:00Z" }), "2026-10-07", "older steps fall back to the timestamp");
+  // a day with only a step on it is a day the app knows about
+  assert.ok(G.activeDates([], [qt], "2026-10-31").indexOf("2026-10-09") !== -1);
 }
 assert.strictEqual(G.openGoals([weekGoal("a"), weekGoal("b", "2026-09-01")], "week").length, 1);
 assert.strictEqual(G.doneGoals([weekGoal("a"), weekGoal("b", "2026-09-01")], "week").length, 1);

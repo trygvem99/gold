@@ -2,7 +2,7 @@
 // the ticket show in reveal.js, shared visuals in ui.js.
 "use strict";
 
-const BUILD = "2026-10-24 · auto backup";
+const BUILD = "2026-10-24 · step points";
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -387,11 +387,16 @@ function renderGoalLists() {
   });
 }
 
-// A step is progress you can see and feel, and nothing more: no point, no ticket.
+// Each ticked step is a point today, in one-off and quarterly goals alike, so
+// it moves the day's ring and can earn the day's ticket. Unticking takes the
+// point back, and with it an unspent ticket it was holding up.
 async function toggleStep(goal, stepId, btn, card) {
   if (!goal) return;
   const now = new Date().toISOString();
-  const steps = (goal.steps || []).map((st) => (st.id === stepId ? Object.assign({}, st, { done_at: st.done_at ? null : now }) : st));
+  const steps = (goal.steps || []).map((st) => (st.id !== stepId ? st
+    : st.done_at ? Object.assign({}, st, { done_at: null, done_on: null })
+      : Object.assign({}, st, { done_at: now, done_on: today })));
+  const was = (goal.steps || []).find((st) => st.id === stepId);
   const rec = Object.assign({}, goal, { steps });
   await Data.goals.put(rec);
   goals = goals.map((x) => (x.id === rec.id ? rec : x));
@@ -402,13 +407,23 @@ async function toggleStep(goal, stepId, btn, card) {
   card.style.setProperty("--gp", String(sp.done / sp.total));
   card.classList.toggle("ready", sp.done === sp.total);
   card.querySelector(".goal-meta").innerHTML = goalMeta(rec);
+  const st = statsOn(today);
   if (done) {
-    Ui.burst(btn.querySelector(".step-box"), goal.kind === "quarter" ? "#E9B949" : "#3DDC97", 8);
-    Sfx.blip(sp.done / sp.total);
-    Ui.vibrate(8);
+    Ui.burst(btn.querySelector(".step-box"), goal.kind === "quarter" ? "#E9B949" : "#3DDC97", 10);
+    Sfx.blip(st.target ? st.points / st.target : 0);
+    Ui.vibrate(12);
   } else {
-    Ui.vibrate(4);
+    Ui.vibrate(6);
+    Sfx.thunk();
   }
+  renderHero();
+  renderWeekStrip();
+
+  // a point taken back from the day it was earned on
+  const added = await syncTickets(done ? null : Gold.stepDate(was) || today);
+  renderHero();
+  renderWeekStrip();
+  if (added.length) setTimeout(() => announceTickets(added), 520);
 }
 
 // A one-off is worth a point on the day it is finished. A quarterly goal pays
@@ -954,7 +969,7 @@ function editGoal(kind, g) {
     { key: "name", label: "Name", type: "text", value: goal.name },
     { key: "emoji", label: "Icon", type: "icon", value: goal.emoji, autoFollow: isNew },
     { key: "note", label: "Description", type: "textarea", value: goal.note || "" },
-    { key: "steps", label: "Steps", type: "steps", value: goal.steps || [] },
+    { key: "steps", label: "Steps · 1 point each", type: "steps", value: goal.steps || [] },
   ];
   if (kind === "quarter") {
     fields.push({ key: "tickets", label: "Tickets it pays", type: "stepper", value: Gold.goalTickets(goal), min: 1, max: 20 });
@@ -1149,17 +1164,18 @@ function fieldHtml(f) {
 }
 
 const stepRowHtml = (st) =>
-  `<div class="step-row" data-id="${esc(st.id)}" data-done="${esc(st.done_at || "")}">` +
+  `<div class="step-row" data-id="${esc(st.id)}" data-done="${esc(st.done_at || "")}" data-on="${esc(st.done_on || "")}">` +
   `<input type="text" value="${esc(st.name)}" /><button type="button" class="step-del" aria-label="Remove step">×</button></div>`;
 
 // Steps in the editor: rows keep their id, so a renamed step stays ticked.
 // Text left in the add box counts as a step too.
 function readSteps(box) {
   const rows = Array.from(box.querySelectorAll(".step-row")).map((r) => ({
-    id: r.dataset.id, name: r.querySelector("input").value.trim(), done_at: r.dataset.done || null,
+    id: r.dataset.id, name: r.querySelector("input").value.trim(),
+    done_at: r.dataset.done || null, done_on: r.dataset.on || null,
   }));
   const pending = box.querySelector(".step-add input").value.trim();
-  if (pending) rows.push({ id: Data.newId(), name: pending, done_at: null });
+  if (pending) rows.push({ id: Data.newId(), name: pending, done_at: null, done_on: null });
   return rows.filter((r) => r.name);
 }
 
@@ -1202,7 +1218,7 @@ function wireControls() {
       const name = input.value.trim();
       if (!name) return;
       const tmp = document.createElement("div");
-      tmp.innerHTML = stepRowHtml({ id: Data.newId(), name, done_at: null });
+      tmp.innerHTML = stepRowHtml({ id: Data.newId(), name, done_at: null, done_on: null });
       const row = tmp.firstChild;
       w.insertBefore(row, w.querySelector(".step-add"));
       wireRow(row);

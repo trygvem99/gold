@@ -77,8 +77,13 @@
   const goalsDoneOn = (goals, date) =>
     goals.filter((g) => g.kind === "week" && g.done_at && g.done_at.slice(0, 10) === date);
   const goalTickets = (g) => Math.max(1, g.tickets || 3);
-  // Steps inside a goal, as in Microsoft To Do: progress you can see, worth
-  // nothing on their own. Only finishing the goal itself pays.
+  // Steps inside a goal, as in Microsoft To Do. Each ticked step is worth one
+  // point on the day it was ticked, in one-off and quarterly goals alike. Like a
+  // finished one-off it is a bonus: it adds to the day's points and to what the
+  // day could hold, so an unticked step never raises the bar.
+  const stepDate = (st) => st.done_on || (st.done_at ? st.done_at.slice(0, 10) : null);
+  const stepsDoneOn = (goals, date) => goals.reduce((n, g) =>
+    n + ((g.steps || []).filter((st) => st.done_at && stepDate(st) === date).length), 0);
   const stepProgress = (g) => {
     const steps = (g && g.steps) || [];
     return { done: steps.filter((st) => st.done_at).length, total: steps.length };
@@ -111,7 +116,7 @@
   function dayStats(day, habits, goals, settings) {
     const date = day.date;
     const act = habitsActiveOn(habits, date);
-    const bonus = goalsDoneOn(goals, date).length;
+    const bonus = goalsDoneOn(goals, date).length + stepsDoneOn(goals, date);
     const max = maxPointsForDay(act) + bonus;
     const points = pointsForDay(day.counts, act) + bonus;
     const target = effectiveTarget(targetOn(settings, date), max);
@@ -131,6 +136,10 @@
         const d = g.done_at.slice(0, 10);
         if (d <= today) s.add(d);
       }
+      for (const st of g.steps || []) {
+        const d = st.done_at && stepDate(st);
+        if (d && d <= today) s.add(d);
+      }
     }
     return Array.from(s).sort();
   }
@@ -145,7 +154,8 @@
   // is a weekend, say — asks nothing of you, so it can neither earn nor break a
   // streak. It is skipped over, not counted as a miss.
   const isRestDay = (habits, goals, date) =>
-    habitsActiveOn(habits, date).length === 0 && goalsDoneOn(goals, date).length === 0;
+    habitsActiveOn(habits, date).length === 0 && goalsDoneOn(goals, date).length === 0 &&
+    stepsDoneOn(goals, date) === 0;
 
   function onlyRestBetween(habits, goals, a, b) {
     for (let d = shiftDate(a, 1); d < b; d = shiftDate(d, 1)) {
@@ -569,7 +579,7 @@
     activeHabits, habitsActiveOn, targetOf, maxPointsForDay, pointsForDay,
     weekdayOf, scheduledOn, isRestDay, bestStreak, habitStats, habitGrid,
     milestones, STREAK_MARKS, REP_MARKS, SLOTS, slotOf, slotForHour,
-    openGoals, doneGoals, goalsDoneOn, goalTickets, stepProgress,
+    openGoals, doneGoals, goalsDoneOn, goalTickets, stepProgress, stepDate, stepsDoneOn,
     targetHistory, targetOn, effectiveTarget, dayStats, dayQualifies,
     activeDates, runLengths, currentStreak,
     ticketsOwed, ticketKey, reconcileTickets, unspentTickets, MANAGED,
